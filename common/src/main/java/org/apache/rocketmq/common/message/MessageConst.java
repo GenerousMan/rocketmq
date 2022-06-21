@@ -59,6 +59,16 @@ public class MessageConst {
 
     public static final HashSet<String> STRING_HASH_SET = new HashSet<>(64);
 
+    public static final String PROPERTY_TIMER_ENQUEUE_MS = "TIMER_ENQUEUE_MS";
+    public static final String PROPERTY_TIMER_DEQUEUE_MS = "TIMER_DEQUEUE_MS";
+    public static final String PROPERTY_TIMER_ROLL_TIMES = "TIMER_ROLL_TIMES";
+    public static final String PROPERTY_TIMER_OUT_MS = "TIMER_OUT_MS";
+    public static final String PROPERTY_TIMER_DEL_UNIQKEY = "TIMER_DEL_UNIQKEY";
+    public static final String PROPERTY_TIMER_DELIVER_MS = "TIMER_DELIVER_MS";
+    public static final String PROPERTY_TIMER_DELAY_LEVEL = "TIMER_DELAY_LEVEL";
+    public static final String PROPERTY_TIMER_DELAY_SEC = "TIMER_DELAY_SEC";
+    public static final String PROPERTY_TIMER_DELAY_MS = "TIMER_DELAY_MS";
+
     static {
         STRING_HASH_SET.add(PROPERTY_TRACE_SWITCH);
         STRING_HASH_SET.add(PROPERTY_MSG_REGION);

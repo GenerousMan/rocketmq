@@ -163,6 +163,15 @@ public class CommitLog {
         return this.mappedFileQueue.getFlushedWhere();
     }
 
+    public boolean getData(final long offset, final int size, final ByteBuffer byteBuffer) {
+        int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
+        MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
+        if (mappedFile != null) {
+            int pos = (int) (offset % mappedFileSize);
+            return mappedFile.getData(pos, size, byteBuffer);
+        }
+        return false;
+    }
     public long getMaxOffset() {
         return this.mappedFileQueue.getMaxOffset();
     }

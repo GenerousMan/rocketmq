@@ -70,6 +70,7 @@ import org.apache.rocketmq.store.index.IndexService;
 import org.apache.rocketmq.store.index.QueryOffsetResult;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.apache.rocketmq.store.timer.TimerMessageStore;
 
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -112,6 +113,7 @@ public class DefaultMessageStore implements MessageStore {
     private volatile boolean shutdown = true;
 
     private StoreCheckpoint storeCheckpoint;
+    private TimerMessageStore timerMessageStore;
 
     private AtomicLong printTimes = new AtomicLong(0);
 
@@ -369,6 +371,10 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    @Override
+    public boolean getData(long offset, int size, ByteBuffer byteBuffer) {
+        return this.commitLog.getData(offset, size, byteBuffer);
+    }
     private PutMessageStatus checkMessage(MessageExtBrokerInner msg) {
         if (msg.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long " + msg.getTopic().length());
@@ -753,6 +759,9 @@ public class DefaultMessageStore implements MessageStore {
         return -1;
     }
 
+    @Override public void setTimerMessageStore(TimerMessageStore timerMessageStore) {
+        this.timerMessageStore = timerMessageStore;
+    }
     @Override
     public long getCommitLogOffsetInQueue(String topic, int queueId, long consumeQueueOffset) {
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);

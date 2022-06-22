@@ -758,7 +758,9 @@ public class DefaultMessageStore implements MessageStore {
 
         return -1;
     }
-
+    @Override public TimerMessageStore getTimerMessageStore() {
+        return this.timerMessageStore;
+    }
     @Override public void setTimerMessageStore(TimerMessageStore timerMessageStore) {
         this.timerMessageStore = timerMessageStore;
     }

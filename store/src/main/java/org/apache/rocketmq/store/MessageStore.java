@@ -182,7 +182,7 @@ public interface MessageStore {
      * @return message store running info.
      */
     String getRunningDataInfo();
-
+    long getTimingMessageCount(String topic);
     /**
      * Message store runtime information, which should generally contains various statistical information.
      *

@@ -17,29 +17,52 @@
 
 package org.apache.rocketmq.store.timer;
 
-import org.apache.rocketmq.common.BrokerConfig;
-import org.apache.rocketmq.common.TopicFilterType;
-import org.apache.rocketmq.common.message.*;
-import org.apache.rocketmq.store.*;
-import org.apache.rocketmq.store.config.FlushDiskType;
-import org.apache.rocketmq.store.config.MessageStoreConfig;
-import org.apache.rocketmq.store.stats.BrokerStatsManager;
-import org.junit.*;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.rocketmq.common.BrokerConfig;
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageClientIDSetter;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.store.ConsumeQueue;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.GetMessageResult;
+import org.apache.rocketmq.store.GetMessageStatus;
+import org.apache.rocketmq.store.MessageArrivingListener;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.MessageStore;
+import org.apache.rocketmq.store.PutMessageResult;
+import org.apache.rocketmq.store.PutMessageStatus;
+import org.apache.rocketmq.store.config.FlushDiskType;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 //// Timer unit tests are very unstable, ignore these temporarily
 //@Ignore
@@ -66,19 +89,18 @@ public class TimerMessageStoreTest {
         bornHost = new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0);
 
         storeConfig = new MessageStoreConfig();
-        storeConfig.setMappedFileSizeCommitLog(1024 * 100);
-        storeConfig.setMappedFileSizeTimerLog(1024);
-        storeConfig.setMappedFileSizeConsumeQueue(1024);
-        storeConfig.setMaxHashSlotNum(250);
-        storeConfig.setTimerCongestNumEachSec(100);
-        storeConfig.setMaxIndexNum(100 * 10);
+        storeConfig.setMappedFileSizeCommitLog(1024 * 1024 * 1024);
+        storeConfig.setMappedFileSizeTimerLog(1024 * 1024 * 1024);
+        storeConfig.setMappedFileSizeConsumeQueue(10240);
+        storeConfig.setMaxHashSlotNum(10000);
+        storeConfig.setMaxIndexNum(100 * 1000);
         storeConfig.setStorePathRootDir(baseDir);
         storeConfig.setStorePathCommitLog(baseDir + File.separator + "commitlog");
         storeConfig.setFlushDiskType(FlushDiskType.ASYNC_FLUSH);
         storeConfig.setTimerInterceptDelayLevel(true);
         storeConfig.setTimerPrecisionMs(precisionMs);
 
-        messageStore = new DefaultMessageStore(storeConfig, new BrokerStatsManager("TimerTest",true), new MyMessageArrivingListener(), new BrokerConfig());
+        messageStore = new DefaultMessageStore(storeConfig, new BrokerStatsManager("TimerTest",false), new MyMessageArrivingListener(), new BrokerConfig());
         boolean load = messageStore.load();
         assertTrue(load);
         messageStore.start();
@@ -124,10 +146,8 @@ public class TimerMessageStoreTest {
                 return timerMessageStore.getCommitQueueOffset() == 10 * 5;
             }
         });
-        long count = timerMessageStore.getCommitQueueOffset();
 
         for (int i = 0; i < 10; i++) {
-            count = timerMessageStore.getTimerMetrics().getTimingCount(topic + i);
             Assert.assertEquals(5, timerMessageStore.getTimerMetrics().getTimingCount(topic + i));
         }
 
@@ -289,29 +309,27 @@ public class TimerMessageStoreTest {
         final String topic = "TimerTest_testStateAndRecover";
 
         String base = StoreTestUtils.createBaseDir();
-        final TimerMessageStore first = createTimerMessageStore(null);
+        final TimerMessageStore first = createTimerMessageStore(base);
         first.load();
         first.start();
 
-
-        final int msgNum = 150;
+        final int msgNum = 250;
         long curr = System.currentTimeMillis() / precisionMs * precisionMs;
-        final long delayMs = curr + 1000;
+        final long delayMs = curr + 5000;
         for (int i = 0; i < msgNum; i++) {
-            MessageExtBrokerInner inner = buildMessage(delayMs, topic, false);
+            MessageExtBrokerInner inner = buildMessage((i % 2 == 0) ? 5000 : delayMs, topic, i % 2 == 0);
             PutMessageResult putMessageResult = messageStore.putMessage(inner);
             long CQOffset = first.getCommitQueueOffset();
             assertEquals(PutMessageStatus.PUT_OK, putMessageResult.getPutMessageStatus());
         }
-        Thread.sleep(3000);
-        long CQOffset = first.getCommitQueueOffset();
 
         // Wait until messages have wrote to TimerLog and currReadTimeMs catches up current time.
-        await().atMost(8000, TimeUnit.MILLISECONDS).until(new Callable<Boolean>() {
+        await().atMost(5000, TimeUnit.MILLISECONDS).until(new Callable<Boolean>() {
             @Override public Boolean call() {
                 long curr = System.currentTimeMillis() / precisionMs * precisionMs;
                 long CQOffset = first.getCommitQueueOffset();
-                return first.getCommitQueueOffset() == msgNum|| first.getCurrReadTimeMs() == curr + precisionMs;
+                return first.getCommitQueueOffset() == msgNum
+                        && (first.getCurrReadTimeMs() == curr || first.getCurrReadTimeMs() == curr + precisionMs);
             }
         });
         assertThat(first.getTimerLog().getMappedFileQueue().getMappedFiles().size())

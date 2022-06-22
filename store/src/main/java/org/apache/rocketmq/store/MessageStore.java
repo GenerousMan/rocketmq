@@ -126,6 +126,9 @@ public interface MessageStore {
      * @return Minimum offset at present.
      */
     long getMinOffsetInQueue(final String topic, final int queueId);
+
+    TimerMessageStore getTimerMessageStore();
+
     void setTimerMessageStore(TimerMessageStore timerMessageStore);
 
     /**

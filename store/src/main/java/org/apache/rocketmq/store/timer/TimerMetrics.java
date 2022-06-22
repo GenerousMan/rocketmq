@@ -45,6 +45,11 @@ public class TimerMetrics extends ConfigManager {
 
     private final ConcurrentMap<String, Metric> timingCount =
         new ConcurrentHashMap<>(1024);
+
+    // TODO: 增加10秒内、1分钟内、15分钟内、1小时内、4小时内、8小时内、1天内的定时消息量统计
+    // 统计方法为，启动时统计指定长度内的slot.num总数。在doEnqueue时，推进slot的过程中掐头增尾，即为最新消息量分布情况。
+    private final ConcurrentMap<String, Metric> timingDistribution =
+            new ConcurrentHashMap<>(1024);
     private final DataVersion dataVersion = new DataVersion();
 
     private final String configPath;

@@ -1463,7 +1463,13 @@ public class DefaultMessageStore implements MessageStore {
 
         this.recoverTopicQueueTable();
     }
-
+    @Override public long getTimingMessageCount(String topic) {
+        if (null == timerMessageStore) {
+            return 0L;
+        } else {
+            return timerMessageStore.getTimerMetrics().getTimingCount(topic);
+        }
+    }
     public MessageStoreConfig getMessageStoreConfig() {
         return messageStoreConfig;
     }

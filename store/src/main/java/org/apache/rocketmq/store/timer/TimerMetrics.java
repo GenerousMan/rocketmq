@@ -18,6 +18,7 @@ package org.apache.rocketmq.store.timer;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.google.common.io.Files;
 import org.apache.rocketmq.common.ConfigManager;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
@@ -26,7 +27,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
-import java.io.Writer;
+import java.io.*;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -160,7 +161,51 @@ public class TimerMetrics extends ConfigManager {
             this.dataVersion = dataVersion;
         }
     }
+    @Override
+    public synchronized void persist() {
+        String config = configFilePath();
+        String temp = config + ".tmp";
+        String backup = config + ".bak";
+        BufferedWriter bufferedWriter = null;
+        try {
+            File tmpFile = new File(temp);
+            File parentDirectory = tmpFile.getParentFile();
+            if (!parentDirectory.exists()) {
+                if (!parentDirectory.mkdirs()) {
+                    log.error("Failed to create directory: {}", parentDirectory.getCanonicalPath());
+                    return;
+                }
+            }
 
+            if (!tmpFile.exists()) {
+                if (!tmpFile.createNewFile()) {
+                    log.error("Failed to create file: {}", tmpFile.getCanonicalPath());
+                    return;
+                }
+            }
+            bufferedWriter = new BufferedWriter(new FileWriter(tmpFile, false));
+            write0(bufferedWriter);
+            bufferedWriter.flush();
+            log.debug("Finished writing tmp file: {}", temp);
+
+            File configFile = new File(config);
+            if (configFile.exists()) {
+                Files.copy(configFile, new File(backup));
+                configFile.delete();
+            }
+
+            tmpFile.renameTo(configFile);
+        } catch (IOException e) {
+            log.error("Failed to persist {}", temp, e);
+        } finally {
+            if (null != bufferedWriter) {
+                try {
+                    bufferedWriter.close();
+                } catch (IOException ignore) {
+                }
+            }
+        }
+    }
     public static class Metric {
         private AtomicLong count;
         private long timeStamp;

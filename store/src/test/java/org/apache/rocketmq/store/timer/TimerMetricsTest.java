@@ -33,16 +33,16 @@ public class TimerMetricsTest {
         Assert.assertEquals(1000, first.getTimingCount("AAA"));
         Assert.assertEquals(2000, first.getTimingCount("BBB"));
         long curr = System.currentTimeMillis();
-        Assert.assertTrue(first.getPair("AAA").getTimeStamp() > curr - 10);
-        Assert.assertTrue(first.getPair("AAA").getTimeStamp() <= curr);
+        Assert.assertTrue(first.getTopicPair("AAA").getTimeStamp() > curr - 10);
+        Assert.assertTrue(first.getTopicPair("AAA").getTimeStamp() <= curr);
         first.persist();
 
         TimerMetrics second = new TimerMetrics(baseDir);
         Assert.assertTrue(second.load());
         Assert.assertEquals(1000, second.getTimingCount("AAA"));
         Assert.assertEquals(2000, second.getTimingCount("BBB"));
-        Assert.assertTrue(second.getPair("BBB").getTimeStamp() > curr - 100);
-        Assert.assertTrue(second.getPair("BBB").getTimeStamp() <= curr);
+        Assert.assertTrue(second.getTopicPair("BBB").getTimeStamp() > curr - 100);
+        Assert.assertTrue(second.getTopicPair("BBB").getTimeStamp() <= curr);
         second.persist();
         StoreTestUtils.deleteFile(baseDir);
     }

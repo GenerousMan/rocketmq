@@ -28,9 +28,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
 import java.io.*;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -48,8 +46,13 @@ public class TimerMetrics extends ConfigManager {
 
     // TODO: 增加10秒内、1分钟内、15分钟内、1小时内、4小时内、8小时内、1天内的定时消息量统计
     // 统计方法为，启动时统计指定长度内的slot.num总数。在doEnqueue时，推进slot的过程中掐头增尾，即为最新消息量分布情况。
-    private final ConcurrentMap<String, Metric> timingDistribution =
+    private final ConcurrentMap<Integer, Metric> timingDistribution =
             new ConcurrentHashMap<>(1024);
+    public List<Integer> timerDist = new ArrayList<Integer>(){{
+        add(5);add(60);add(300); // 5s, 1min, 5min
+        add(900);add(3600);add(14400); // 15min, 1h, 4h
+        add(28800);add(86400); // 8h, 24h
+    }};
     private final DataVersion dataVersion = new DataVersion();
 
     private final String configPath;
@@ -58,14 +61,28 @@ public class TimerMetrics extends ConfigManager {
         this.configPath = configPath;
     }
 
+    public long updateDistPair(int period, int value){
+        Metric distPair = getDistPair(period);
+        return distPair.getCount().addAndGet(value);
+    }
+
     public long addAndGet(String topic, int value) {
-        Metric pair = getPair(topic);
+        Metric pair = getTopicPair(topic);
         getDataVersion().nextVersion();
         pair.setTimeStamp(System.currentTimeMillis());
         return pair.getCount().addAndGet(value);
     }
 
-    public Metric getPair(String topic) {
+    public Metric getDistPair(Integer period) {
+        Metric pair = timingDistribution.get(period);
+        if (null == pair) {
+            pair = new Metric();
+            timingDistribution.putIfAbsent(period, pair);
+        }
+        return pair;
+    }
+
+    public Metric getTopicPair(String topic) {
         Metric pair = timingCount.get(topic);
         if (null == pair) {
             pair = new Metric();
@@ -73,6 +90,15 @@ public class TimerMetrics extends ConfigManager {
         }
         return pair;
     }
+
+    public List<Integer> getTimerDistList(){
+        return this.timerDist;
+    }
+
+    public void setTimerDistList(List<Integer> timerDist){
+        this.timerDist = timerDist;
+    }
+
 
     public long getTimingCount(String topic) {
         Metric pair = timingCount.get(topic);

@@ -30,6 +30,7 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.sql.Time;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -170,6 +171,8 @@ public class TimerMessageStore {
         boolean load = timerLog.load();
         load = load && this.timerMetrics.load();
         recover();
+        // TODO: Add the distribution metrics' calculation. Once it setup it will give the initial distribution.
+        calcTimerDistribution();
         return load;
     }
 
@@ -179,6 +182,26 @@ public class TimerMessageStore {
 
     public static String getTimerLogPath(final String rootDir) {
         return rootDir + File.separator + "timerlog";
+    }
+
+    private void calcTimerDistribution(){
+        long startTime = System.currentTimeMillis();
+        List<Integer> timerDist = this.timerMetrics.getTimerDistList();
+        long currTime = System.currentTimeMillis()/precisionMs*precisionMs;
+        for (int i=0;i<timerDist.size();i++) {
+            int slotBeforeNum = (i == 0 ? 0 : timerDist.get(i - 1) *1000/precisionMs);
+            int slotTotalNum = timerDist.get(i) *1000/precisionMs;
+            int periodTotal = 0;
+            for(int j=slotBeforeNum; j<slotTotalNum;j++){
+                Slot slotEach = timerWheel.getSlot(currTime+j*precisionMs);
+                periodTotal+=slotEach.num;
+            }
+            System.out.printf("%d period's total num: %d\n",timerDist.get(i),periodTotal);
+            this.timerMetrics.updateDistPair(timerDist.get(i),periodTotal);
+        }
+        long endTime = System.currentTimeMillis();
+        System.out.printf("Total cost Time:%d%n",endTime-startTime);
+
     }
 
     public void recover() {
@@ -616,7 +639,10 @@ public class TimerMessageStore {
         tmpBuffer.putLong(0); //reserved value, just set to 0 now
         long ret = timerLog.append(tmpBuffer.array(), 0, TimerLog.UNIT_SIZE);
         if (-1 != ret) {
-            timerWheel.putSlot(delayedTime, slot.firstPos == -1 ? ret : slot.firstPos, ret, slot.num + 1, slot.magic);
+            // If it's a delete message, then slot's total num -1
+            // TODO: check if the delete msg is in the same slot with "the msg to be deleted".
+            timerWheel.putSlot(delayedTime, slot.firstPos == -1 ? ret : slot.firstPos, ret,
+                    isDelete? slot.num - 1 : slot.num + 1, slot.magic);
             addMetric(messageExt, isDelete ? -1 : 1);
         }
         return -1 != ret;

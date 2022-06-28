@@ -83,13 +83,13 @@ public class TimerConsumer {
                     Long[] end = snapshotList.getLast();
 
                     final long consumeTps =
-                        (long) (((end[1] - begin[1]) / (double) (end[0] - begin[0])) * 1000L);
+                            (long) (((end[1] - begin[1]) / (double) (end[0] - begin[0])) * 1000L);
                     final double avgDelayedDuration = (end[2] - begin[2]) / (double) (end[1] - begin[1]);
 
                     List<Long> delayedDurationList = new ArrayList<>(TimerConsumer.this.statsBenchmark.getDelayedDurationMsSet());
                     if (delayedDurationList.isEmpty()) {
                         System.out.printf("Consume TPS: %d, Avg delayedDuration: %7.3f, Max delayedDuration: 0, %n",
-                            consumeTps, avgDelayedDuration);
+                                consumeTps, avgDelayedDuration);
                     } else {
                         long delayedDuration25 = delayedDurationList.get((int) (delayedDurationList.size() * 0.25));
                         long delayedDuration50 = delayedDurationList.get((int) (delayedDurationList.size() * 0.5));
@@ -99,9 +99,9 @@ public class TimerConsumer {
                         long delayedDuration999 = delayedDurationList.get((int) (delayedDurationList.size() * 0.999));
 
                         System.out.printf("Consume TPS: %d, Avg delayedDuration: %7.3f, Max delayedDuration: %d, " +
-                                "delayDuration %%25: %d, %%50: %d; %%80: %d; %%90: %d; %%99: %d; %%99.9: %d%n",
-                            consumeTps, avgDelayedDuration, delayedDurationList.get(delayedDurationList.size() - 1),
-                            delayedDuration25, delayedDuration50, delayedDuration80, delayedDuration90, delayedDuration99, delayedDuration999);
+                                        "delayDuration %%25: %d, %%50: %d; %%80: %d; %%90: %d; %%99: %d; %%99.9: %d%n",
+                                consumeTps, avgDelayedDuration, delayedDurationList.get(delayedDurationList.size() - 1),
+                                delayedDuration25, delayedDuration50, delayedDuration80, delayedDuration90, delayedDuration99, delayedDuration999);
                     }
                 }
             }
@@ -168,10 +168,10 @@ public class TimerConsumer {
         private final ConcurrentSkipListSet<Long> delayedDurationMsSet = new ConcurrentSkipListSet<>();
 
         public Long[] createSnapshot() {
-            return new Long[] {
-                System.currentTimeMillis(),
-                this.receiveMessageTotalCount.get(),
-                this.delayedDurationMsTotal.get(),
+            return new Long[]{
+                    System.currentTimeMillis(),
+                    this.receiveMessageTotalCount.get(),
+                    this.delayedDurationMsTotal.get(),
             };
         }
 

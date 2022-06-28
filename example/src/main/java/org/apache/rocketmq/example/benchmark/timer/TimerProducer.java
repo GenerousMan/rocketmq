@@ -74,15 +74,15 @@ public class TimerProducer {
         msgsTotalPerSlotThread = commandLine.hasOption("mt") ? Integer.parseInt(commandLine.getOptionValue("mt")) : 5000;
         slotDis = commandLine.hasOption("sd") ? Integer.parseInt(commandLine.getOptionValue("sd")) : 1000;
         System.out.printf("namesrvAddr: %s, topic: %s, threadCount: %d, messageSize: %d, precisionMs: %d, slotsTotal: %d, msgsTotalPerSlotThread: %d, slotDis: %d%n",
-            namesrvAddr, topic, threadCount, messageSize, precisionMs, slotsTotal, msgsTotalPerSlotThread, slotDis);
+                namesrvAddr, topic, threadCount, messageSize, precisionMs, slotsTotal, msgsTotalPerSlotThread, slotDis);
 
         sendThreadPool = new ThreadPoolExecutor(
-            threadCount,
-            threadCount,
-            0L,
-            TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<Runnable>(),
-            new ThreadFactoryImpl("ProducerSendMessageThread_"));
+                threadCount,
+                threadCount,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(),
+                new ThreadFactoryImpl("ProducerSendMessageThread_"));
 
         producer = new DefaultMQProducer("benchmark_producer");
         producer.setInstanceName(Long.toString(System.currentTimeMillis()));
@@ -111,7 +111,7 @@ public class TimerProducer {
                     final double averageRT = (end[5] - begin[5]) / (double) (end[3] - begin[3]);
 
                     System.out.printf("Send TPS: %d, Max RT: %d, Average RT: %7.3f, Send Failed: %d, Response Failed: %d%n",
-                        sendTps, statsBenchmark.getSendMessageMaxRT().get(), averageRT, end[2], end[4]);
+                            sendTps, statsBenchmark.getSendMessageMaxRT().get(), averageRT, end[2], end[4]);
                 }
             }
 
@@ -149,7 +149,7 @@ public class TimerProducer {
                         for (int msgCnt = 0; msgCnt < msgsTotalPerSlotThread; msgCnt++) {
                             final long beginTimestamp = System.currentTimeMillis();
 
-                            long delayTime = delayList.get(slotCnt*msgsTotalPerSlotThread+msgCnt);
+                            long delayTime = delayList.get(slotCnt * msgsTotalPerSlotThread + msgCnt);
 
                             final Message msg;
                             try {
@@ -275,13 +275,13 @@ public class TimerProducer {
         private final AtomicLong sendMessageMaxRT = new AtomicLong(0L);
 
         public Long[] createSnapshot() {
-            return new Long[] {
-                System.currentTimeMillis(),
-                this.sendRequestSuccessCount.get(),
-                this.sendRequestFailedCount.get(),
-                this.receiveResponseSuccessCount.get(),
-                this.receiveResponseFailedCount.get(),
-                this.sendMessageSuccessTimeTotal.get(),
+            return new Long[]{
+                    System.currentTimeMillis(),
+                    this.sendRequestSuccessCount.get(),
+                    this.sendRequestFailedCount.get(),
+                    this.receiveResponseSuccessCount.get(),
+                    this.receiveResponseFailedCount.get(),
+                    this.sendMessageSuccessTimeTotal.get(),
             };
         }
 

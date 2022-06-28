@@ -19,6 +19,9 @@ package org.apache.rocketmq.store.timer;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TimerMetricsTest {
 
 
@@ -44,6 +47,32 @@ public class TimerMetricsTest {
         Assert.assertTrue(second.getTopicPair("BBB").getTimeStamp() > curr - 100);
         Assert.assertTrue(second.getTopicPair("BBB").getTimeStamp() <= curr);
         second.persist();
+        StoreTestUtils.deleteFile(baseDir);
+    }
+
+    @Test
+    public void testTimingDistribution(){
+        String baseDir = StoreTestUtils.createBaseDir();
+        TimerMetrics first = new TimerMetrics(baseDir);
+        List<Integer> timerDist = new ArrayList<Integer>(){{
+            add(5);add(60);add(300); // 5s, 1min, 5min
+            add(900);add(3600);add(14400); // 15min, 1h, 4h
+            add(28800);add(86400); // 8h, 24h
+        }};
+        for(int period:timerDist){
+            first.updateDistPair(period,period);
+        }
+
+        int temp = 0;
+
+        for(int j=-50;j<50;j++){
+            for(int period:timerDist){
+                Assert.assertEquals(first.getDistPair(period).getCount().get(),period+temp);
+                first.updateDistPair(period,j);
+            }
+            temp+=j;
+        }
+
         StoreTestUtils.deleteFile(baseDir);
     }
 }

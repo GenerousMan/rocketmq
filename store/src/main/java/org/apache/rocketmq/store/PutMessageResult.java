@@ -25,6 +25,11 @@ public class PutMessageResult {
         this.appendMessageResult = appendMessageResult;
     }
 
+    public PutMessageResult(PutMessageStatus putMessageStatus) {
+        this.putMessageStatus = putMessageStatus;
+        this.appendMessageResult = new AppendMessageResult(AppendMessageStatus.PUT_OK);
+    }
+
     public boolean isOk() {
         return this.appendMessageResult != null && this.appendMessageResult.isOk();
     }

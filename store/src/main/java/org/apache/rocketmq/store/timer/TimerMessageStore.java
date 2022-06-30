@@ -116,7 +116,7 @@ public class TimerMessageStore {
         this.precisionMs = storeConfig.getTimerPrecisionMs();
         // TimerWheel contains the fixed number of slots regardless of precision.
         this.slotsTotal = TIMER_WHELL_TTL_DAY * DAY_SECS;
-        this.timerWheel = new TimerWheel(getTimerWheelPath(storeConfig.getStorePathRootDir()),
+        this.timerWheel = new TimerWheel(storeConfig,getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
                 this.slotsTotal, precisionMs);
         this.timerLog = new TimerLog(getTimerLogPath(storeConfig.getStorePathRootDir()), timerLogFileSize);
         this.timerMetrics = timerMetrics;
@@ -176,8 +176,8 @@ public class TimerMessageStore {
         return load;
     }
 
-    public static String getTimerWheelPath(final String rootDir) {
-        return rootDir + File.separator + "timerwheel";
+    public static String getTimerWheelPath(final String rootDir, final long precision) {
+        return rootDir + File.separator + "timerwheel" + precision;
     }
 
     public static String getTimerLogPath(final String rootDir) {

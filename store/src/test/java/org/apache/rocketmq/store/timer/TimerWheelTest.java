@@ -16,20 +16,33 @@
  */
 package org.apache.rocketmq.store.timer;
 
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.message.*;
+import org.apache.rocketmq.store.MessageExtBrokerInner;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 
 public class TimerWheelTest {
 
     private String baseDir;
+    private final byte[] msgBody = new byte[1024];
+    private SocketAddress bornHost;
+    private SocketAddress storeHost;
 
-    private final int slotsTotal = 30;
-    private final int precisionMs = 500;
+    private final int slotsTotal = 60;
+    private final AtomicInteger counter = new AtomicInteger(0);
+    private final int precisionMs = 1000;
     private TimerWheel timerWheel;
 
     private final long defaultDelay = System.currentTimeMillis() / precisionMs * precisionMs;
@@ -37,7 +50,67 @@ public class TimerWheelTest {
     @Before
     public void init() throws IOException {
         baseDir = StoreTestUtils.createBaseDir();
-        timerWheel = new TimerWheel(baseDir, slotsTotal, precisionMs);
+        storeHost = new InetSocketAddress(InetAddress.getLocalHost(), 8123);
+        bornHost = new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0);
+        timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotsTotal, precisionMs);
+    }
+
+    @Test
+    public void testPutMsg() throws Exception {
+        int precision = 1;
+        int slotNum = 20;
+        long delayTime = defaultDelay + precision*slotNum/2;
+        MessageExt testMsg = buildMessage(delayTime,"Test", false);
+        baseDir = StoreTestUtils.createBaseDir();
+        timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotNum, precision);
+        timerWheel.PutMessage(testMsg);
+
+        Slot slotGetBack = timerWheel.getSlot(delayTime);
+        MessageExt msgGetBack = slotGetBack.getNextMessage();
+        Assert.assertNotEquals(msgGetBack,null);
+        Assert.assertEquals(msgGetBack.getTopic(),"Test");
+    }
+
+    @Test
+    public void testTick() throws Exception {
+        int precision = 1000;
+        int slotNum = 200;
+        int upPrecision = precision*slotNum;
+        long curTime = System.currentTimeMillis();
+        // 这里必须比原本的slotNum多至少一个单位时间，否则还是会被定位到第一层的最后一个slot中
+        long delayTime = curTime/precision*precision + (long)(precision*(slotNum+50));
+        MessageExt testMsg = buildMessage(delayTime,"Test", false);
+        baseDir = StoreTestUtils.createBaseDir();
+        timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotNum, precision);
+        Assert.assertEquals(timerWheel.nextWheel, null);
+
+        for(int i=0;i<10;i++){
+            delayTime = curTime/precision*precision + (long)(precision*(slotNum+50+i));
+            testMsg = buildMessage(delayTime,"Test", false);
+            timerWheel.PutMessage(testMsg);
+        }
+
+        // 原本的延迟时间为1圈多3格，现在转2圈，应当能在这个过程中把消息加入到前一层。
+        for(int i = 0; i < 2*slotNum; i++) {
+            System.out.printf("now %d%n",i);
+            timerWheel.Tick(curTime+i*precision);
+        }
+
+        // 消息传回第一个wheel内。
+        Assert.assertEquals(timerWheel.nextWheel.slotMaxOffsetTable.size(),0);
+        Assert.assertNotEquals(timerWheel.slotMaxOffsetTable.size(),0);
+    }
+
+    @Test
+    public void testAutoCreateOverflowWheel() throws IOException {
+        baseDir = StoreTestUtils.createBaseDir();
+        timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotsTotal, precisionMs);
+        long delayedTime = defaultDelay + (slotsTotal/2)*precisionMs;
+        long overflowDelayedTime = defaultDelay + (slotsTotal*2)*precisionMs;
+        timerWheel.putSlot(delayedTime,2,5);
+        Assert.assertEquals(timerWheel.nextWheel,null);
+        timerWheel.putSlot(overflowDelayedTime,2,5);
+        Assert.assertNotEquals(timerWheel.nextWheel,null);
     }
 
     @Test
@@ -125,7 +198,7 @@ public class TimerWheelTest {
         timerWheel.putSlot(delayedTime, 1, 2, 3, 4);
         timerWheel.flush();
 
-        TimerWheel tmpWheel = new TimerWheel(baseDir, slotsTotal, precisionMs);
+        TimerWheel tmpWheel = new TimerWheel(new MessageStoreConfig(), baseDir, slotsTotal, precisionMs);
         Slot slot = tmpWheel.getSlot(delayedTime);
         assertEquals(delayedTime, slot.timeMs);
         assertEquals(1, slot.firstPos);
@@ -139,9 +212,30 @@ public class TimerWheelTest {
     @Test(expected = RuntimeException.class)
     public void testRecoveryFixedTTL() throws Exception {
         timerWheel.flush();
-        TimerWheel tmpWheel = new TimerWheel(baseDir, slotsTotal + 1, precisionMs);
+        TimerWheel tmpWheel = new TimerWheel(new MessageStoreConfig(), baseDir, slotsTotal + 1, precisionMs);
     }
+    public MessageExt buildMessage(long delayedMs, String topic, boolean relative) {
+        MessageExtBrokerInner msg = new MessageExtBrokerInner();
+        msg.setTopic(topic);
+        msg.setQueueId(0);
+        msg.setTags(counter.incrementAndGet() + "");
+        msg.setKeys("timer");
+        MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TIMER_OUT_MS, delayedMs + "");
+        msg.setBody(msgBody);
+        msg.setKeys(String.valueOf(System.currentTimeMillis()));
+        msg.setQueueId(4);
+        msg.setBornTimestamp(1234);
+        msg.setBornHost(bornHost);
+        msg.setStoreHost(storeHost);
+        MessageClientIDSetter.setUniqID(msg);
+        TopicFilterType topicFilterType = MessageExt.parseTopicFilterType(msg.getSysFlag());
+        long tagsCodeValue =
+                MessageExtBrokerInner.tagsString2tagsCode(topicFilterType, msg.getTags());
+        msg.setTagsCode(tagsCodeValue);
 
+        msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));
+        return msg;
+    }
     @After
     public void shutdown() {
         if (null != timerWheel) {

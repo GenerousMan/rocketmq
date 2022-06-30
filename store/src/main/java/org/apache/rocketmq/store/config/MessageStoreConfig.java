@@ -34,12 +34,15 @@ public class MessageStoreConfig {
     private String storePathCommitLog = null;
 
     @ImportantField
+    private String storePathSlotLog = null;
+    @ImportantField
     private String storePathDLedgerCommitLog = null;
 
     private String readOnlyCommitLogStorePaths = null;
 
     // CommitLog file size,default is 1G
     private int mappedFileSizeCommitLog = 1024 * 1024 * 1024;
+    private int mappedFileSizeSlotLog = 1024 * 1024 * 1024;
 
     // TimerLog file size, default is 100M
     private int mappedFileSizeTimerLog = 100 * 1024 * 1024;
@@ -256,6 +259,10 @@ public class MessageStoreConfig {
         return mappedFileSizeCommitLog;
     }
 
+    public int getMappedFileSizeSlotLog() {
+        return mappedFileSizeSlotLog;
+    }
+
     public void setMappedFileSizeCommitLog(int mappedFileSizeCommitLog) {
         this.mappedFileSizeCommitLog = mappedFileSizeCommitLog;
     }
@@ -349,6 +356,13 @@ public class MessageStoreConfig {
     public String getStorePathCommitLog() {
         if (storePathCommitLog == null) {
             return storePathRootDir + File.separator + "commitlog";
+        }
+        return storePathCommitLog;
+    }
+
+    public String getStorePathSlotLog(long timeMs) {
+        if (storePathSlotLog == null) {
+            return storePathRootDir + File.separator + "slotlog" + File.separator + timeMs;
         }
         return storePathCommitLog;
     }

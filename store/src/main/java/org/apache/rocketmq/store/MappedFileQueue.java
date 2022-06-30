@@ -49,6 +49,8 @@ public class MappedFileQueue {
     protected long flushedWhere = 0;
     private long committedWhere = 0;
 
+    public long readWhere = 0;
+
     private volatile long storeTimestamp = 0;
 
     public MappedFileQueue(final String storePath, int mappedFileSize,
@@ -654,11 +656,11 @@ public class MappedFileQueue {
     }
 
     public long getFlushedWhere() {
-        return flushedWhere;
+        return this.flushedWhere;
     }
 
-    public void setFlushedWhere(long flushedWhere) {
-        this.flushedWhere = flushedWhere;
+    public void setFlushedWhere(long flushedOffset) {
+        this.flushedWhere = flushedOffset;
     }
 
     public long getStoreTimestamp() {

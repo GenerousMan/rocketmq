@@ -1366,7 +1366,7 @@ public class CommitLog {
         }
     }
 
-    class DefaultAppendMessageCallback implements AppendMessageCallback {
+    public class DefaultAppendMessageCallback implements AppendMessageCallback {
         // File at the end of the minimum fixed length empty
         private static final int END_FILE_MIN_BLANK_LENGTH = 4 + 4;
         // Store the message content
@@ -1578,13 +1578,13 @@ public class CommitLog {
         // The maximum length of the message body.
         private final int maxMessageBodySize;
 
-        MessageExtEncoder(final int maxMessageBodySize) {
+        public MessageExtEncoder(final int maxMessageBodySize) {
             ByteBufAllocator alloc = UnpooledByteBufAllocator.DEFAULT;
             byteBuf = alloc.directBuffer(maxMessageBodySize);
             this.maxMessageBodySize = maxMessageBodySize;
         }
 
-        protected PutMessageResult encode(MessageExtBrokerInner msgInner) {
+        public PutMessageResult encode(MessageExtBrokerInner msgInner) {
             this.byteBuf.clear();
             /**
              * Serialize message
@@ -1796,7 +1796,7 @@ public class CommitLog {
         }
     }
 
-    static class PutMessageContext {
+    public static class PutMessageContext {
         private String topicQueueTableKey;
         private long[] phyPos;
         private int batchSize;

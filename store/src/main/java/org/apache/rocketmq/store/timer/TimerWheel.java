@@ -17,9 +17,13 @@
 package org.apache.rocketmq.store.timer;
 
 import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.store.ConsumeQueue;
 import org.apache.rocketmq.store.MappedFile;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -28,13 +32,18 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class TimerWheel {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     public static final int BLANK = -1, IGNORE = -2;
+
+    public ConcurrentHashMap<Long/* delayTime */, Long/* maxOffset */> slotMaxOffsetTable;
     public final int slotsTotal;
     public final int precisionMs;
+    public TimerWheel nextWheel = null;
     private String fileName;
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
@@ -47,13 +56,14 @@ public class TimerWheel {
         }
     };
     private final int wheelLength;
-
-    public TimerWheel(String fileName, int slotsTotal, int precisionMs) throws IOException {
+    private final MessageStoreConfig storeConfig;
+    public TimerWheel(MessageStoreConfig storeConfig, String fileName, int slotsTotal, int precisionMs) throws IOException {
         this.slotsTotal = slotsTotal;
         this.precisionMs = precisionMs;
         this.fileName = fileName;
+        this.storeConfig = storeConfig;
         this.wheelLength = this.slotsTotal * 2 * Slot.SIZE;
-
+        this.slotMaxOffsetTable = new ConcurrentHashMap<>();
         File file = new File(fileName);
         MappedFile.ensureDirOK(file.getParent());
 
@@ -112,23 +122,132 @@ public class TimerWheel {
         this.mappedByteBuffer.force();
     }
 
-    public Slot getSlot(long timeMs) {
+    public Slot getSlot(long timeMs){
+        if(timeMs-System.currentTimeMillis()> slotsTotal*precisionMs){
+            if(nextWheel!=null) {
+                return nextWheel.getSlot(timeMs);
+            }
+            return null;
+        }
         Slot slot = getRawSlot(timeMs);
         if (slot.timeMs != timeMs / precisionMs * precisionMs) {
-            return new Slot(-1, -1, -1);
+            return new Slot(timeMs / precisionMs * precisionMs, 0, 0);
         }
         return slot;
     }
-
     //testable
     public Slot getRawSlot(long timeMs) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
-        return new Slot(localBuffer.get().getLong() * precisionMs,
-            localBuffer.get().getLong(), localBuffer.get().getLong(), localBuffer.get().getInt(), localBuffer.get().getInt());
+        return new Slot(localBuffer.get().getLong() * precisionMs, localBuffer.get().getInt(), localBuffer.get().getInt());
     }
 
     public int getSlotIndex(long timeMs) {
         return (int) (timeMs / precisionMs % (slotsTotal * 2));
+    }
+
+    public void Tick(long timeMs){
+        // 逐层向上找当前时间的slot，如果有，则无条件转发到本层的所有slot中。
+        if(this.nextWheel!=null){
+            // 先递归把最上层的转发
+            nextWheel.Tick(timeMs);
+            Slot slotCheck = nextWheel.getSlot(timeMs);
+            Long maxOffset = nextWheel.slotMaxOffsetTable.get(slotCheck.timeMs);
+            if(maxOffset!=null){
+                System.out.printf("StartDispatch.\n");
+                dispatchSlotMessage(slotCheck);
+            }
+        }
+    }
+
+    public void PutMessage(MessageExt msg) throws Exception {
+        long timeMs = Long.parseLong(msg.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
+        long diffTime = timeMs-System.currentTimeMillis();
+        if(diffTime> slotsTotal*precisionMs){
+            if(nextWheel==null) {
+                createNextWheel();
+            }
+            nextWheel.PutMessage(msg);
+        }
+        else {
+            Slot slot = getSlot(timeMs);
+
+            Long maxOffset = this.slotMaxOffsetTable.get(slot.timeMs);
+            if(maxOffset==null){
+                System.out.printf("no such offset:%d%n",slot.timeMs);
+                slotMaxOffsetTable.put(slot.timeMs, 0L);
+                maxOffset = 0L;
+            }
+            slot.setMaxFlushedWhere(maxOffset);
+            long flushedOffsetBefore = slot.slotLog.mappedFileQueue.getFlushedWhere();
+            slot.putMessage(msg);
+            long flushedOffset = slot.slotLog.mappedFileQueue.getFlushedWhere();
+            System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,flushedOffsetBefore,flushedOffset);
+            this.slotMaxOffsetTable.put(slot.timeMs,flushedOffset);
+
+            putSlot(slot.timeMs,slot.num+1,slot.magic);
+        }
+    }
+
+    public void dispatchSlotMessage(Slot slotDispatched){
+        long slotTimeMs = slotDispatched.timeMs;
+
+        while(true){
+            MessageExt msgDispatched = slotDispatched.getNextMessage();
+            if(msgDispatched==null){
+                break;
+            }
+            long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
+            Slot nowSlot = this.getSlot(delayedTime);
+            try {
+                // 转发一条就更新一次maxOffsetTable
+                Long nowSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);
+                if(nowSlotOffset==null){
+                    slotMaxOffsetTable.put(nowSlot.timeMs,0L);
+                }
+                nowSlot.putMessage(msgDispatched);
+                slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlot.slotLog.mappedFileQueue.getFlushedWhere());
+
+                putSlot(nowSlot.timeMs,nowSlot.num+1,nowSlot.magic);
+            } catch (Exception e){
+                System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs,nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
+            }
+        }
+        nextWheel.slotMaxOffsetTable.remove(slotTimeMs);
+
+    }
+
+    public static String getTimerWheelPath(final String rootDir, final long precision) {
+        return rootDir + File.separator + "timerwheel" + File.separator + precision;
+    }
+    private boolean createNextWheel(){
+        try {
+            this.nextWheel = new TimerWheel(storeConfig, getTimerWheelPath(storeConfig.getStorePathRootDir(),slotsTotal * precisionMs), slotsTotal, slotsTotal * precisionMs);
+            return true;
+        } catch (IOException e){
+            System.out.printf("Create next wheel fail.");
+            return false;
+        }
+    }
+
+
+    public boolean putSlot(long timeMs, int num, int magic) {
+        if(timeMs-System.currentTimeMillis()> slotsTotal*precisionMs){
+            if(this.nextWheel==null) {
+                if(createNextWheel()) {
+                    this.nextWheel.putSlot(timeMs, num, magic);
+                }
+                else{
+                    System.out.printf("put slot failed.\n");
+                    return false;
+                }
+            }
+            this.nextWheel.putSlot(timeMs, num, magic);
+        }
+        localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
+        localBuffer.get().putLong(timeMs / precisionMs);
+        localBuffer.get().putInt(num);
+        localBuffer.get().putInt(magic);
+        return true;
     }
 
     public void putSlot(long timeMs, long firstPos, long lastPos) {

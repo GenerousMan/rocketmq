@@ -16,8 +16,13 @@
  */
 package org.apache.rocketmq.store.timer;
 
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.store.config.MessageStoreConfig;
+
 public class Slot {
-    public static final short SIZE = 32;
+    public static final short SIZE = 16;
+    public SlotLog slotLog;
+    MessageStoreConfig storeConfig = new MessageStoreConfig();
     public final long timeMs;
     public final long firstPos;
     public final long lastPos;
@@ -26,10 +31,23 @@ public class Slot {
 
     public Slot(long timeMs, long firstPos, long lastPos) {
         this.timeMs = timeMs;
+        this.slotLog = new SlotLog(timeMs, storeConfig, null);
         this.firstPos = firstPos;
         this.lastPos = lastPos;
         this.num = 0;
         this.magic = 0;
+    }
+
+    //TODO: only keep this one.
+    public Slot(long timeMs, int num, int magic) {
+        this.timeMs = timeMs;
+        this.slotLog = new SlotLog(timeMs, storeConfig, null);
+        this.slotLog.load();
+        this.num = num;
+        this.magic = magic;
+
+        this.firstPos = 0;
+        this.lastPos = 0;
     }
 
     public Slot(long timeMs, long firstPos, long lastPos, int num, int magic) {
@@ -38,5 +56,16 @@ public class Slot {
         this.lastPos = lastPos;
         this.num = num;
         this.magic = magic;
+    }
+
+    public void putMessage(final MessageExt msg) throws Exception {
+        this.slotLog.putMessage(msg);
+    }
+    public MessageExt getNextMessage(){
+        return this.slotLog.getNextMessage();
+    }
+
+    public void setMaxFlushedWhere(long maxFlushedWhere){
+        this.slotLog.mappedFileQueue.setFlushedWhere(maxFlushedWhere);
     }
 }

@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class SlotLog {
     protected final MappedFileQueue mappedFileQueue;
+    public long slotMaxOffset;
     public final MessageStoreConfig storeConfig;
     private final ThreadLocal<PutMessageThreadLocal> putMessageThreadLocal;
 
@@ -24,6 +25,7 @@ public class SlotLog {
         this.timeMs = timeMs;
         this.storeConfig = storeConfig;
         String storePath = storeConfig.getStorePathSlotLog(timeMs);
+        this.slotMaxOffset = 0;
         this.mappedFileQueue = new MappedFileQueue(storePath,
                 storeConfig.getMappedFileSizeCommitLog(),
                 allocateMappedFileService);
@@ -33,6 +35,7 @@ public class SlotLog {
                 return new PutMessageThreadLocal(storeConfig.getMaxMessageSize());
             }
         };
+
     }
 
     public long flush() {
@@ -45,17 +48,29 @@ public class SlotLog {
         this.mappedFileQueue.load();
     }
 
+    public void recoverOffset(){
+        long maxOffset = 0;
+        while(true){
+            long newOffset = getNextMessageOffset(maxOffset);
+            if(newOffset!=-1){
+                maxOffset = newOffset;
+            }
+            else{
+                break;
+            }
+        }
+        this.slotMaxOffset = maxOffset;
+    }
+
     public boolean getData(final long offset, final int size, final ByteBuffer byteBuffer) {
         int mappedFileSize = storeConfig.getMappedFileSizeSlotLog();
+        byteBuffer.position(0);
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
         if (mappedFile != null) {
             int pos = (int) (offset % mappedFileSize);
             return mappedFile.getData(pos, size, byteBuffer);
         }
         return false;
-    }
-    public long getMaxOffset() {
-        return this.mappedFileQueue.getMaxOffset();
     }
     public int deleteExpiredFile(
             final long expiredTime,
@@ -82,45 +97,86 @@ public class SlotLog {
         };
     }
 
-    public boolean putMessage(final MessageExt msg) throws Exception {
-        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
-
-        if(mappedFile==null || mappedFile.isFull()){
-            mappedFile = this.mappedFileQueue.getLastMappedFile(0);
-        }
+    public long putMessage(final MessageExt msg, long putOffset) throws Exception {
         if(msg==null){
-            return false;
+            return putOffset;
         }
+
         byte[] encodeMsg = MessageDecoder.encode(msg,false);
-        int msgLength = encodeMsg.length;
-        byte[] mergeBuffer = byteMerger(intToByteArray(msgLength),encodeMsg);
-        try {
-            System.out.printf("flushed:%d%n",this.mappedFileQueue.getFlushedWhere());
-            mappedFile.appendMessage(mergeBuffer,(int)this.mappedFileQueue.getFlushedWhere(),mergeBuffer.length);
-            this.flush();
-            return true;
-        } catch (Exception e){
-            return false;
+
+        int msgFileOffset = 0;
+        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
+        if(mappedFile==null || putOffset+encodeMsg.length >= mappedFile.getFileSize()){
+            mappedFile = this.mappedFileQueue.getLastMappedFile(0);
+            msgFileOffset = 0;
+            putOffset = (this.mappedFileQueue.getMappedFiles().size()-1) * mappedFile.getFileSize();
+        } else{
+            msgFileOffset = (int) (putOffset - (this.mappedFileQueue.getMappedFiles().size()-1) * mappedFile.getFileSize());
         }
+        mappedFile.setWrotePosition(msgFileOffset);
+        try {
+            mappedFile.appendMessage(encodeMsg,0,encodeMsg.length);
+            this.slotMaxOffset = putOffset+encodeMsg.length;
+            this.flush();
+            return slotMaxOffset;
+        } catch (Exception e){
+            return putOffset;
+        }
+    }
+
+    public SelectMappedBufferResult getMessage(final long offset, final int size) {
+        int mappedFileSize = storeConfig.getMappedFileSizeSlotLog();
+        MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
+        if (mappedFile != null) {
+            int pos = (int) (offset % mappedFileSize);
+            return mappedFile.selectMappedBuffer(pos, size);
+        }
+        return null;
+    }
+
+    public MessageExt lookMessageByOffset(long slotLogOffset, int size) {
+        SelectMappedBufferResult sbr = getMessage(slotLogOffset, size);
+        if (null != sbr) {
+            try {
+                return MessageDecoder.decode(sbr.getByteBuffer(), true, false);
+            } finally {
+                sbr.release();
+            }
+        }
+        return null;
+    }
+
+    public MessageExt lookMessageByOffset(long slotLogOffset) {
+        SelectMappedBufferResult sbr = getMessage(slotLogOffset, 4);
+        if (null != sbr) {
+            try {
+                // 1 TOTALSIZE
+                int size = sbr.getByteBuffer().getInt();
+                return lookMessageByOffset(slotLogOffset, size);
+            } finally {
+                sbr.release();
+            }
+        }
+        return null;
     }
 
     // TODO: consider more, such as if the broker shutdown, how to recover the readWhere pointer.
-    public MessageExt getNextMessage(){
-        ByteBuffer msgSize = ByteBuffer.wrap(new byte[8]);
+    public long getNextMessageOffset(long offset){
+        ByteBuffer msgSize = ByteBuffer.wrap(new byte[4]);
         msgSize.position(0);
         msgSize.limit(4);
-        getData(this.mappedFileQueue.readWhere,4,msgSize);
-        int size = msgSize.getInt(0);
-        ByteBuffer msgBody = ByteBuffer.wrap(new byte[4096]);
-        msgBody.position(0);
-        msgBody.limit(size);
-        getData(this.mappedFileQueue.readWhere+4,size,msgBody);
-        msgBody.position(0);
-        MessageExt msgExt = MessageDecoder.decode(msgBody);
-        this.mappedFileQueue.readWhere += (4+size);
-        return msgExt;
+        try {
+            getData(offset, 4, msgSize);
+            int size = msgSize.getInt(0);
+            if (size > 0 && size < storeConfig.getMaxMessageSize()) {
+                return offset + size;
+            } else {
+                return -1;
+            }
+        } catch(Exception e){
+            return -1;
+        }
     }
-
 
     private String generateKey(StringBuilder keyBuilder, MessageExt messageExt) {
         keyBuilder.setLength(0);

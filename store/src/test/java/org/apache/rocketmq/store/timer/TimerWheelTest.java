@@ -66,39 +66,72 @@ public class TimerWheelTest {
         timerWheel.PutMessage(testMsg);
 
         Slot slotGetBack = timerWheel.getSlot(delayTime);
-        MessageExt msgGetBack = slotGetBack.getNextMessage();
+        MessageExt msgGetBack = slotGetBack.getNextMessage(0);
         Assert.assertNotEquals(msgGetBack,null);
         Assert.assertEquals(msgGetBack.getTopic(),"Test");
     }
 
+
     @Test
-    public void testTick() throws Exception {
-        int precision = 1000;
-        int slotNum = 200;
-        int upPrecision = precision*slotNum;
+    public void testMultiTick() throws Exception {
+        int slotNum = 20;
+        int precision = 1;int precision2 = 20;int precision3 = 400;
+
         long curTime = System.currentTimeMillis();
-        // 这里必须比原本的slotNum多至少一个单位时间，否则还是会被定位到第一层的最后一个slot中
-        long delayTime = curTime/precision*precision + (long)(precision*(slotNum+50));
-        MessageExt testMsg = buildMessage(delayTime,"Test", false);
         baseDir = StoreTestUtils.createBaseDir();
         timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotNum, precision);
         Assert.assertEquals(timerWheel.nextWheel, null);
 
-        for(int i=0;i<10;i++){
-            delayTime = curTime/precision*precision + (long)(precision*(slotNum+50+i));
-            testMsg = buildMessage(delayTime,"Test", false);
+        // 设置一条消息，在第三层的第二格中， 此处延迟为80秒
+        long delayTime = curTime/precision*precision + (long)(precision3*2);
+        MessageExt testMsg = buildMessage(delayTime,"Test", false);
+        timerWheel.PutMessage(testMsg);
+
+        Assert.assertNotEquals(timerWheel.nextWheel,null);
+        Assert.assertNotEquals(timerWheel.nextWheel.nextWheel,null);
+
+        // 给第三层转3格的时间，能将消息逐层转发至最下层时间轮中。
+        for(int i = 0; i < precision*slotNum*slotNum*3; i++) {
+            Thread.sleep(precision);
+            timerWheel.Tick(curTime+i*precision);
+        }
+
+        Assert.assertNotEquals(timerWheel.slotMaxOffsetTable.size(),0);
+
+    }
+
+    @Test
+    public void testDeleteOffsetTable(){
+    // TODO 检查是否能在消息转发至下层后，删除当前的offsetTable。
+
+    }
+
+    @Test
+    public void testTick() throws Exception {
+        int precision = 100;
+        int slotNum = 20;
+        int upPrecision = precision*slotNum;
+        long curTime = System.currentTimeMillis();
+        // 这里必须比原本的slotNum多至少一个单位时间，否则还是会被定位到第一层的最后一个slot中
+        baseDir = StoreTestUtils.createBaseDir();
+        timerWheel = new TimerWheel(new MessageStoreConfig(),baseDir, slotNum, precision);
+        Assert.assertEquals(timerWheel.nextWheel, null);
+
+        for(int i=0;i<5;i++){
+            long delayTime = curTime/precision*precision + (long)(precision*(slotNum+1+i));
+            MessageExt testMsg = buildMessage(delayTime,"Test", false);
             timerWheel.PutMessage(testMsg);
         }
 
-        // 原本的延迟时间为1圈多3格，现在转2圈，应当能在这个过程中把消息加入到前一层。
+        // 原本的延迟时间为1圈多1格，现在转2圈，应当能在这个过程中把消息加入到前一层。
         for(int i = 0; i < 2*slotNum; i++) {
-            System.out.printf("now %d%n",i);
+            Thread.sleep(precision);
             timerWheel.Tick(curTime+i*precision);
         }
 
         // 消息传回第一个wheel内。
         Assert.assertEquals(timerWheel.nextWheel.slotMaxOffsetTable.size(),0);
-        Assert.assertNotEquals(timerWheel.slotMaxOffsetTable.size(),0);
+        Assert.assertEquals(timerWheel.slotMaxOffsetTable.size(),5);
     }
 
     @Test

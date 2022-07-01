@@ -43,17 +43,17 @@ public class SlotLogTest {
 
     @Test
     public void testPutNullMessage() throws Exception {
-        boolean result = slotLog.putMessage(null);
-        Assert.assertEquals(result,false);
+        long result = slotLog.putMessage(null,0);
+        Assert.assertEquals(result,0);
     }
 
     @Test
     public void testPutMessage() throws Exception {
         // here msg size will be 1204
         MessageExt msgTest = buildMessage(100,"Test", true);
-        boolean result = slotLog.putMessage(msgTest);
-        Assert.assertEquals(result,true);
-        Assert.assertEquals(slotLog.mappedFileQueue.getMaxOffset(),4+1204);
+        long putOffset = slotLog.putMessage(msgTest,0);
+        Assert.assertEquals(putOffset,1204L);
+        Assert.assertEquals(slotLog.mappedFileQueue.getMaxOffset(),1204);
 
         ByteBuffer msgSize = ByteBuffer.wrap(new byte[8]);
         msgSize.position(0);
@@ -65,38 +65,53 @@ public class SlotLogTest {
         ByteBuffer msgBody = ByteBuffer.wrap(new byte[4096]);
         msgBody.position(0);
         msgBody.limit(size);
-        boolean getBodyResult = slotLog.mappedFileQueue.findMappedFileByOffset(0).getData(4,size, msgBody);
+        boolean getBodyResult = slotLog.mappedFileQueue.findMappedFileByOffset(0).getData(0,size, msgBody);
         msgBody.position(0);
         MessageExt msgExt = MessageDecoder.decode(msgBody);
         Assert.assertEquals(msgExt.getTopic(),"Test");
     }
 
     @Test
-    public void testGetMessage() throws Exception {
+    public void testSlotInside() throws Exception {
+        ByteBuffer msgSize = ByteBuffer.wrap(new byte[4096]);
+        MessageExt msgTest = buildMessage(100, "Test", true);
+        long result = slotLog.putMessage(msgTest,0);
+        result = slotLog.putMessage(msgTest,2405);
+        MessageExt msg = slotLog.lookMessageByOffset(0);
+        Assert.assertEquals(msg.getTopic(),"Test");
 
-        for(int i = 0; i < 1000; i++) {
-            // here msg size will be 1204
-            MessageExt msgTest = buildMessage(100, "Test"+i, true);
-            boolean result = slotLog.putMessage(msgTest);
-        }
-        for(int i = 0; i < 1000; i++) {
-            MessageExt getMsg = slotLog.getNextMessage();
-            Assert.assertEquals(getMsg.getTopic(), "Test"+i);
+        msg = slotLog.lookMessageByOffset(2405);
+        Assert.assertEquals(msg.getTopic(),"Test");
+
+    }
+
+    @Test
+    public void testGetMessage() throws Exception {
+        long tempOffset = 0;
+        for(int i = 0; i < 100; i++) {
+            MessageExt msgTest = buildMessage(100, "Test", true);
+            long result = slotLog.putMessage(msgTest,tempOffset);
+            MessageExt getMsg = slotLog.lookMessageByOffset(tempOffset);
+            Assert.assertEquals(getMsg.getTopic(), "Test");
+            tempOffset=result;
         }
     }
 
     @Test
     public void testRecoverSlotLog() throws Exception {
-        MessageExt msgTest = buildMessage(100, "Test", true);
-        boolean result = slotLog.putMessage(msgTest);
-        MessageExt getMsg = slotLog.getNextMessage();
-
+        MessageExt msgTest = buildMessage(1000580, "Test", true);
+        long result = slotLog.putMessage(msgTest,0);
+        result = slotLog.putMessage(msgTest,result);
+        result = slotLog.putMessage(msgTest,result);
         int fileNumOri = slotLog.mappedFileQueue.getMappedFiles().size();
+
         SlotLog newlog = new SlotLog(100,storeConfig,null);
         newlog.load();
+        newlog.recoverOffset();
+
         int fileNumNew = newlog.mappedFileQueue.getMappedFiles().size();
         Assert.assertEquals(fileNumNew,fileNumOri);
-        Assert.assertEquals(slotLog.mappedFileQueue.getMaxOffset(),newlog.mappedFileQueue.getMaxOffset());
+        Assert.assertEquals(slotLog.slotMaxOffset,newlog.slotMaxOffset);
     }
 
     public MessageExt buildMessage(long delayedMs, String topic, boolean relative) {

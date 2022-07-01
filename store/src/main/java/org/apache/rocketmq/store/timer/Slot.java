@@ -58,11 +58,12 @@ public class Slot {
         this.magic = magic;
     }
 
-    public void putMessage(final MessageExt msg) throws Exception {
-        this.slotLog.putMessage(msg);
+    public long putMessage(final MessageExt msg, long putOffset) throws Exception {
+        long updateOffset = this.slotLog.putMessage(msg, putOffset);
+        return updateOffset;
     }
-    public MessageExt getNextMessage(){
-        return this.slotLog.getNextMessage();
+    public MessageExt getNextMessage(long offset){
+        return this.slotLog.lookMessageByOffset(offset);
     }
 
     public void setMaxFlushedWhere(long maxFlushedWhere){

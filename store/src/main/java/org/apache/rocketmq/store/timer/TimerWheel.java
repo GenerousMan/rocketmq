@@ -44,6 +44,7 @@ public class TimerWheel {
     public final int slotsTotal;
     public final int precisionMs;
     public TimerWheel nextWheel = null;
+    public TimerWheel beforeWheel = null;
     private String fileName;
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
@@ -153,7 +154,6 @@ public class TimerWheel {
             Slot slotCheck = nextWheel.getSlot(timeMs);
             Long maxOffset = nextWheel.slotMaxOffsetTable.get(slotCheck.timeMs);
             if(maxOffset!=null){
-                System.out.printf("StartDispatch.\n");
                 dispatchSlotMessage(slotCheck);
             }
         }
@@ -177,12 +177,9 @@ public class TimerWheel {
                 slotMaxOffsetTable.put(slot.timeMs, 0L);
                 maxOffset = 0L;
             }
-            slot.setMaxFlushedWhere(maxOffset);
-            long flushedOffsetBefore = slot.slotLog.mappedFileQueue.getFlushedWhere();
-            slot.putMessage(msg);
-            long flushedOffset = slot.slotLog.mappedFileQueue.getFlushedWhere();
-            System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,flushedOffsetBefore,flushedOffset);
-            this.slotMaxOffsetTable.put(slot.timeMs,flushedOffset);
+            long newMaxOffset = slot.putMessage(msg, maxOffset);
+            System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
+            this.slotMaxOffsetTable.replace(slot.timeMs,newMaxOffset);
 
             putSlot(slot.timeMs,slot.num+1,slot.magic);
         }
@@ -190,9 +187,10 @@ public class TimerWheel {
 
     public void dispatchSlotMessage(Slot slotDispatched){
         long slotTimeMs = slotDispatched.timeMs;
+        long tempNextOffset = 0;
 
         while(true){
-            MessageExt msgDispatched = slotDispatched.getNextMessage();
+            MessageExt msgDispatched = slotDispatched.getNextMessage(tempNextOffset);
             if(msgDispatched==null){
                 break;
             }
@@ -200,20 +198,23 @@ public class TimerWheel {
             Slot nowSlot = this.getSlot(delayedTime);
             try {
                 // 转发一条就更新一次maxOffsetTable
-                Long nowSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);
-                if(nowSlotOffset==null){
+                Long beforeSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);
+                if(beforeSlotOffset==null){
                     slotMaxOffsetTable.put(nowSlot.timeMs,0L);
+                    beforeSlotOffset = 0L;
                 }
-                nowSlot.putMessage(msgDispatched);
-                slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlot.slotLog.mappedFileQueue.getFlushedWhere());
+                long nowSlotOffset = nowSlot.putMessage(msgDispatched, beforeSlotOffset);
+                slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlotOffset);
+                tempNextOffset+=(nowSlotOffset-beforeSlotOffset);
 
                 putSlot(nowSlot.timeMs,nowSlot.num+1,nowSlot.magic);
             } catch (Exception e){
                 System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs,nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
             }
         }
+        // 转发完了，需要把上一层向本层转发的slot记录删除，并且清空上一层该slot的timerWheel记录。
         nextWheel.slotMaxOffsetTable.remove(slotTimeMs);
-
+        putSlot(slotDispatched.timeMs,0,slotDispatched.magic);
     }
 
     public static String getTimerWheelPath(final String rootDir, final long precision) {
@@ -222,6 +223,7 @@ public class TimerWheel {
     private boolean createNextWheel(){
         try {
             this.nextWheel = new TimerWheel(storeConfig, getTimerWheelPath(storeConfig.getStorePathRootDir(),slotsTotal * precisionMs), slotsTotal, slotsTotal * precisionMs);
+            nextWheel.beforeWheel = this;
             return true;
         } catch (IOException e){
             System.out.printf("Create next wheel fail.");

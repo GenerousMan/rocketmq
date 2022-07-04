@@ -24,7 +24,24 @@ public class SlotLog {
     public SlotLog(final long timeMs, final MessageStoreConfig storeConfig, final AllocateMappedFileService allocateMappedFileService) {
         this.timeMs = timeMs;
         this.storeConfig = storeConfig;
-        String storePath = storeConfig.getStorePathSlotLog(timeMs);
+        String storePath = storeConfig.getStorePathSlotLog(-1, timeMs);
+        this.slotMaxOffset = 0;
+        this.mappedFileQueue = new MappedFileQueue(storePath,
+                storeConfig.getMappedFileSizeSlotLog(),
+                allocateMappedFileService);
+        putMessageThreadLocal = new ThreadLocal<PutMessageThreadLocal>() {
+            @Override
+            protected PutMessageThreadLocal initialValue() {
+                return new PutMessageThreadLocal(storeConfig.getMaxMessageSize());
+            }
+        };
+
+    }
+
+    public SlotLog(final int precision, final long timeMs, final MessageStoreConfig storeConfig, final AllocateMappedFileService allocateMappedFileService) {
+        this.timeMs = timeMs;
+        this.storeConfig = storeConfig;
+        String storePath = storeConfig.getStorePathSlotLog(precision, timeMs);
         this.slotMaxOffset = 0;
         this.mappedFileQueue = new MappedFileQueue(storePath,
                 storeConfig.getMappedFileSizeCommitLog(),

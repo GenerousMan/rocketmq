@@ -41,6 +41,7 @@ public class TimerWheel {
     public static final int BLANK = -1, IGNORE = -2;
 
     public ConcurrentHashMap<Long/* delayTime */, Long/* maxOffset */> slotMaxOffsetTable;
+    public ConcurrentHashMap<Long/* delayTime */, Slot/* maxOffset */> slotTable;
     public final int slotsTotal;
     public final int precisionMs;
     public TimerWheel nextWheel = null;
@@ -65,6 +66,7 @@ public class TimerWheel {
         this.storeConfig = storeConfig;
         this.wheelLength = this.slotsTotal * 2 * Slot.SIZE;
         this.slotMaxOffsetTable = new ConcurrentHashMap<>();
+        this.slotTable = new ConcurrentHashMap<>();
         File file = new File(fileName);
         MappedFile.ensureDirOK(file.getParent());
 
@@ -130,16 +132,21 @@ public class TimerWheel {
             }
             return null;
         }
-        Slot slot = getRawSlot(timeMs);
-        if (slot.timeMs != timeMs / precisionMs * precisionMs) {
-            return new Slot(timeMs / precisionMs * precisionMs, 0, 0);
+//        Slot slot = getRawSlot(timeMs);
+//        if (slot.timeMs != timeMs / precisionMs * precisionMs) {
+//            return new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
+//        }
+        Slot slot = slotTable.get(timeMs / precisionMs * precisionMs);
+        if(slot==null){
+            slot = new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
+            slotTable.put(slot.timeMs, slot);
         }
         return slot;
     }
     //testable
     public Slot getRawSlot(long timeMs) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
-        return new Slot(localBuffer.get().getLong() * precisionMs, localBuffer.get().getInt(), localBuffer.get().getInt());
+        return new Slot(precisionMs, localBuffer.get().getLong() * precisionMs, localBuffer.get().getInt(), localBuffer.get().getInt());
     }
 
     public int getSlotIndex(long timeMs) {
@@ -170,7 +177,6 @@ public class TimerWheel {
         }
         else {
             Slot slot = getSlot(timeMs);
-
             Long maxOffset = this.slotMaxOffsetTable.get(slot.timeMs);
             if(maxOffset==null){
                 System.out.printf("no such offset:%d%n",slot.timeMs);
@@ -180,8 +186,8 @@ public class TimerWheel {
             long newMaxOffset = slot.putMessage(msg, maxOffset);
             System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
             this.slotMaxOffsetTable.replace(slot.timeMs,newMaxOffset);
-
-            putSlot(slot.timeMs,slot.num+1,slot.magic);
+            this.slotTable.put(timeMs,slot);
+            // putSlot(slot.timeMs,slot.num+1,slot.magic);
         }
     }
 
@@ -252,6 +258,16 @@ public class TimerWheel {
         return true;
     }
 
+    public void deleteExpiredItems(){
+        for(long item: slotMaxOffsetTable.keySet()){
+            if(item<System.currentTimeMillis()/precisionMs*precisionMs - 5 * precisionMs){
+                slotMaxOffsetTable.remove(item);
+                slotTable.remove(item);
+            }
+        }
+        this.nextWheel.deleteExpiredItems();
+    }
+
     public void putSlot(long timeMs, long firstPos, long lastPos) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
         // To be compatible with previous version.
@@ -290,23 +306,8 @@ public class TimerWheel {
 
     //check the timerwheel to see if its stored offset > maxOffset in timerlog
     public long checkPhyPos(long timeStartMs, long maxOffset) {
-        long minFirst = Long.MAX_VALUE;
-        int firstSlotIndex = getSlotIndex(timeStartMs);
-        for (int i = 0; i < slotsTotal * 2; i++) {
-            int slotIndex = (firstSlotIndex + i) % (slotsTotal * 2);
-            localBuffer.get().position(slotIndex * Slot.SIZE);
-            if ((timeStartMs + i * precisionMs) / precisionMs != localBuffer.get().getLong()) {
-                continue;
-            }
-            long first = localBuffer.get().getLong();
-            long last = localBuffer.get().getLong();
-            if (last > maxOffset) {
-                if (first < minFirst) {
-                    minFirst = first;
-                }
-            }
-        }
-        return minFirst;
+        System.out.printf("Timer Wheel recover need to be rewrite.");
+        return 0L;
     }
 
     public long getNum(long timeMs) {

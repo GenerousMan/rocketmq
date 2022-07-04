@@ -26,7 +26,7 @@ public class Slot {
     public final long timeMs;
     public final long firstPos;
     public final long lastPos;
-    public final int num;
+    public int num;
     public final int magic; //no use now, just keep it
 
     public Slot(long timeMs, long firstPos, long lastPos) {
@@ -39,9 +39,9 @@ public class Slot {
     }
 
     //TODO: only keep this one.
-    public Slot(long timeMs, int num, int magic) {
+    public Slot(int precision, long timeMs, int num, int magic) {
         this.timeMs = timeMs;
-        this.slotLog = new SlotLog(timeMs, storeConfig, null);
+        this.slotLog = new SlotLog(precision, timeMs, storeConfig, null);
         this.slotLog.load();
         this.num = num;
         this.magic = magic;
@@ -50,16 +50,10 @@ public class Slot {
         this.lastPos = 0;
     }
 
-    public Slot(long timeMs, long firstPos, long lastPos, int num, int magic) {
-        this.timeMs = timeMs;
-        this.firstPos = firstPos;
-        this.lastPos = lastPos;
-        this.num = num;
-        this.magic = magic;
-    }
 
     public long putMessage(final MessageExt msg, long putOffset) throws Exception {
         long updateOffset = this.slotLog.putMessage(msg, putOffset);
+        num+=1;
         return updateOffset;
     }
     public MessageExt getNextMessage(long offset){

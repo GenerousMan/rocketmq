@@ -42,14 +42,14 @@ public class MessageStoreConfig {
 
     // CommitLog file size,default is 1G
     private int mappedFileSizeCommitLog = 1024 * 1024 * 1024;
-    private int mappedFileSizeSlotLog = 1024 * 1024 * 1024;
+    private int mappedFileSizeSlotLog = 10 * 1024 * 1024;
 
     // TimerLog file size, default is 100M
     private int mappedFileSizeTimerLog = 100 * 1024 * 1024;
 
     private int timerPrecisionMs = 1000;
 
-    private int timerRollWindowSlot = 3600 * 24 * 2;
+    private int timerRollWindowSlot = 60;
     private int timerRollWindowSec = 3600 * 24 * 2;
     private int timerFlushIntervalMs = 1000;
     private int timerGetMessageThreadNum = 3;
@@ -360,9 +360,9 @@ public class MessageStoreConfig {
         return storePathCommitLog;
     }
 
-    public String getStorePathSlotLog(long timeMs) {
+    public String getStorePathSlotLog(int precision, long timeMs) {
         if (storePathSlotLog == null) {
-            return storePathRootDir + File.separator + "slotlog" + File.separator + timeMs;
+            return storePathRootDir + File.separator + "slotlog" + File.separator + precision + File.separator + timeMs;
         }
         return storePathCommitLog;
     }

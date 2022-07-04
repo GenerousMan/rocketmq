@@ -664,9 +664,9 @@ public class CommitLog {
                 deliverMs = deliverMs / timerPrecisionMs * timerPrecisionMs;
             }
 
-            if (this.defaultMessageStore.getTimerMessageStore().isReject(deliverMs)) {
-                return new PutMessageResult(PutMessageStatus.WHEEL_TIMER_FLOW_CONTROL, null);
-            }
+//            if (this.defaultMessageStore.getTimerMessageStore().isReject(deliverMs)) {
+//                return new PutMessageResult(PutMessageStatus.WHEEL_TIMER_FLOW_CONTROL, null);
+//            }
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TIMER_OUT_MS, deliverMs + "");
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
             MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));

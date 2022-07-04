@@ -77,6 +77,7 @@ public class TimerMessageStore {
     private final TimerEnqueuePutService enqueuePutService;
     private final TimerDequeueWarmService dequeueWarmService;
     private final TimerDequeueGetService dequeueGetService;
+    private final TimerItemDeleteService deleteExpiredItemService;
     private final TimerDequeuePutMessageService[] dequeuePutMessaageServices;
     private final TimerDequeueGetMessageService[] dequeueGetMessageServices;
     private final TimerFlushService timerFlushService;
@@ -115,7 +116,7 @@ public class TimerMessageStore {
         this.timerLogFileSize = storeConfig.getMappedFileSizeTimerLog();
         this.precisionMs = storeConfig.getTimerPrecisionMs();
         // TimerWheel contains the fixed number of slots regardless of precision.
-        this.slotsTotal = TIMER_WHELL_TTL_DAY * DAY_SECS;
+        this.slotsTotal = 60;
         this.timerWheel = new TimerWheel(storeConfig,getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
                 this.slotsTotal, precisionMs);
         this.timerLog = new TimerLog(getTimerLogPath(storeConfig.getStorePathRootDir()), timerLogFileSize);
@@ -140,6 +141,7 @@ public class TimerMessageStore {
         dequeueWarmService = new TimerDequeueWarmService();
         dequeueGetService = new TimerDequeueGetService();
         timerFlushService = new TimerFlushService();
+        deleteExpiredItemService = new TimerItemDeleteService();
         int getThreadNum = storeConfig.getTimerGetMessageThreadNum();
         if (getThreadNum <= 0) {
             getThreadNum = 1;
@@ -177,7 +179,7 @@ public class TimerMessageStore {
     }
 
     public static String getTimerWheelPath(final String rootDir, final long precision) {
-        return rootDir + File.separator + "timerwheel" + precision;
+        return rootDir + File.separator + "timerwheel" + File.separator + precision;
     }
 
     public static String getTimerLogPath(final String rootDir) {
@@ -185,22 +187,7 @@ public class TimerMessageStore {
     }
 
     private void calcTimerDistribution() {
-        long startTime = System.currentTimeMillis();
-        List<Integer> timerDist = this.timerMetrics.getTimerDistList();
-        long currTime = System.currentTimeMillis() / precisionMs * precisionMs;
-        for (int i = 0; i < timerDist.size(); i++) {
-            int slotBeforeNum = (i == 0 ? 0 : timerDist.get(i - 1) * 1000 / precisionMs);
-            int slotTotalNum = timerDist.get(i) * 1000 / precisionMs;
-            int periodTotal = 0;
-            for (int j = slotBeforeNum; j < slotTotalNum; j++) {
-                Slot slotEach = timerWheel.getSlot(currTime + j * precisionMs);
-                periodTotal += slotEach.num;
-            }
-            System.out.printf("%d period's total num: %d\n", timerDist.get(i), periodTotal);
-            this.timerMetrics.updateDistPair(timerDist.get(i), periodTotal);
-        }
-        long endTime = System.currentTimeMillis();
-        System.out.printf("Total cost Time:%d%n", endTime - startTime);
+        System.out.printf("Distribution need to be rewrite.\n");
 
     }
 
@@ -376,6 +363,7 @@ public class TimerMessageStore {
     public void start() {
         this.shouldStartTime = storeConfig.getDisappearTimeAfterStart() + System.currentTimeMillis();
         maybeMoveWriteTime();
+        deleteExpiredItemService.start();
         enqueueGetService.start();
         enqueuePutService.start();
         dequeueWarmService.start();
@@ -443,6 +431,7 @@ public class TimerMessageStore {
         dequeueGetQueue.clear(); //avoid blocking
         dequeuePutQueue.clear(); //avoid blocking
 
+        deleteExpiredItemService.shutdown();
         enqueueGetService.shutdown();
         enqueuePutService.shutdown();
         dequeueWarmService.shutdown();
@@ -605,48 +594,20 @@ public class TimerMessageStore {
         return false;
     }
 
-    public boolean doEnqueue(long offsetPy, int sizePy, long delayedTime, MessageExt messageExt) {
+    public boolean doEnqueue(long offsetPy, int sizePy, long delayedTime, MessageExt messageExt) throws Exception {
         log.debug("Do enqueue [{}] [{}]", new Timestamp(delayedTime), messageExt);
         //copy the value first, avoid concurrent problem
         long tmpWriteTimeMs = currWriteTimeMs;
-        boolean needRoll = delayedTime - tmpWriteTimeMs >= timerRollWindowSlots * precisionMs;
-        int magic = MAGIC_DEFAULT;
-        if (needRoll) {
-            magic = magic | MAGIC_ROLL;
-            if (delayedTime - tmpWriteTimeMs - timerRollWindowSlots * precisionMs < timerRollWindowSlots / 3 * precisionMs) {
-                //give enough time to next roll
-                delayedTime = tmpWriteTimeMs + (timerRollWindowSlots / 2) * precisionMs;
-            } else {
-                delayedTime = tmpWriteTimeMs + timerRollWindowSlots * precisionMs;
-            }
-        }
         boolean isDelete = messageExt.getProperty(TIMER_DELETE_UNIQKEY) != null;
-        if (isDelete) {
-            magic = magic | MAGIC_DELETE;
-        }
+
         String realTopic = messageExt.getProperty(MessageConst.PROPERTY_REAL_TOPIC);
 
         Slot slot = timerWheel.getSlot(delayedTime);
-        ByteBuffer tmpBuffer = timerLogBuffer;
-        tmpBuffer.clear();
-        tmpBuffer.putInt(TimerLog.UNIT_SIZE); //size
-        tmpBuffer.putLong(slot.lastPos); //prev pos
-        tmpBuffer.putInt(magic); //magic
-        tmpBuffer.putLong(tmpWriteTimeMs); //currWriteTime
-        tmpBuffer.putInt((int) (delayedTime - tmpWriteTimeMs)); //delayTime
-        tmpBuffer.putLong(offsetPy); //offset
-        tmpBuffer.putInt(sizePy); //size
-        tmpBuffer.putInt(hashTopicForMetrics(realTopic)); //hashcode of real topic
-        tmpBuffer.putLong(0); //reserved value, just set to 0 now
-        long ret = timerLog.append(tmpBuffer.array(), 0, TimerLog.UNIT_SIZE);
-        if (-1 != ret) {
-            // If it's a delete message, then slot's total num -1
-            // TODO: check if the delete msg is in the same slot with "the msg to be deleted".
-            timerWheel.putSlot(delayedTime, slot.firstPos == -1 ? ret : slot.firstPos, ret,
-                    isDelete ? slot.num - 1 : slot.num + 1, slot.magic);
-            addMetric(messageExt, isDelete ? -1 : 1);
-        }
-        return -1 != ret;
+        timerWheel.PutMessage(messageExt);
+        // timerWheel.putSlot(delayedTime, isDelete ? slot.num - 1 : slot.num + 1, slot.magic);
+        System.out.printf("now the slot "+slot.timeMs+" add a message, now:%d%n",slot.num+1);
+        // addMetric(messageExt, isDelete ? -1 : 1);
+        return true;
     }
 
     public int warmDequeue() {
@@ -1234,6 +1195,28 @@ public class TimerMessageStore {
         }
     }
 
+    class TimerItemDeleteService extends ServiceThread {
+
+        @Override
+        public String getServiceName() {
+            return this.getClass().getSimpleName();
+        }
+
+        @Override
+        public void run() {
+            TimerMessageStore.log.info(this.getServiceName() + " service start");
+            while (!this.isStopped()) {
+                try {
+                    timerWheel.deleteExpiredItems();
+                    waitForRunning(1000);
+                    continue;
+                } catch (Throwable e) {
+                    TimerMessageStore.log.error("Unknown error", e);
+                }
+            }
+            TimerMessageStore.log.info(this.getServiceName() + " service end");
+        }
+    }
     class TimerDequeueGetService extends ServiceThread {
 
         @Override

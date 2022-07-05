@@ -299,7 +299,7 @@ public class MappedFile extends ReferenceResource {
         if ((currentPos + length) <= this.fileSize) {
             try {
                 ByteBuffer buf = this.mappedByteBuffer.slice();
-                System.out.printf("now mappedfile writing position:%d%n",currentPos);
+                // System.out.printf("now mappedfile writing position:%d%n",currentPos);
                 buf.position(currentPos);
                 buf.put(data, offset, length);
             } catch (Throwable e) {

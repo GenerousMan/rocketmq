@@ -41,7 +41,8 @@ public class TimerWheel {
     public static final int BLANK = -1, IGNORE = -2;
 
     public ConcurrentHashMap<Long/* delayTime */, Long/* maxOffset */> slotMaxOffsetTable;
-    public ConcurrentHashMap<Long/* delayTime */, Slot/* maxOffset */> slotTable;
+    public ConcurrentHashMap<Long/* delayTime */, Long/* readOffset */> slotReadOffsetTable;
+    public ConcurrentHashMap<Long/* delayTime */, Slot/* Slot */> slotTable;
     public final int slotsTotal;
     public final int precisionMs;
     public TimerWheel nextWheel = null;
@@ -66,6 +67,7 @@ public class TimerWheel {
         this.storeConfig = storeConfig;
         this.wheelLength = this.slotsTotal * 2 * Slot.SIZE;
         this.slotMaxOffsetTable = new ConcurrentHashMap<>();
+        this.slotReadOffsetTable = new ConcurrentHashMap<>();
         this.slotTable = new ConcurrentHashMap<>();
         File file = new File(fileName);
         MappedFile.ensureDirOK(file.getParent());
@@ -184,7 +186,7 @@ public class TimerWheel {
                 maxOffset = 0L;
             }
             long newMaxOffset = slot.putMessage(msg, maxOffset);
-            System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
+            // System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
             this.slotMaxOffsetTable.replace(slot.timeMs,newMaxOffset);
             this.slotTable.put(timeMs,slot);
             // putSlot(slot.timeMs,slot.num+1,slot.magic);
@@ -200,6 +202,7 @@ public class TimerWheel {
             if(msgDispatched==null){
                 break;
             }
+            System.out.printf("Dispatched.");
             long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
             Slot nowSlot = this.getSlot(delayedTime);
             try {
@@ -237,6 +240,21 @@ public class TimerWheel {
         }
     }
 
+    public MessageExt getSlotNextMessage(Slot slot){
+        Long nowReadOffset = this.slotReadOffsetTable.get(slot.timeMs);
+        if(nowReadOffset==null){
+            this.slotReadOffsetTable.put(slot.timeMs,0L);
+            nowReadOffset = 0L;
+        }
+        if(this.slotMaxOffsetTable.get(slot.timeMs)==null || nowReadOffset>=this.slotMaxOffsetTable.get(slot.timeMs)){
+            return null;
+        }
+        MessageExt nextMessage = slot.getNextMessage(nowReadOffset);
+        this.slotReadOffsetTable.replace(slot.timeMs,nextMessage.getStoreSize()+nowReadOffset);
+        System.out.printf("now message size:%d%n",nextMessage.getStoreSize());
+        return nextMessage;
+    }
+
 
     public boolean putSlot(long timeMs, int num, int magic) {
         if(timeMs-System.currentTimeMillis()> slotsTotal*precisionMs){
@@ -260,7 +278,7 @@ public class TimerWheel {
 
     public void deleteExpiredItems(){
         for(long item: slotMaxOffsetTable.keySet()){
-            if(item<System.currentTimeMillis()/precisionMs*precisionMs - 5 * precisionMs){
+            if(item<System.currentTimeMillis()/precisionMs*precisionMs - slotsTotal / 2 * precisionMs){
                 slotMaxOffsetTable.remove(item);
                 slotTable.remove(item);
             }

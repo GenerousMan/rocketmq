@@ -117,7 +117,7 @@ public class TimerMessageStore {
         this.timerLogFileSize = storeConfig.getMappedFileSizeTimerLog();
         this.precisionMs = storeConfig.getTimerPrecisionMs();
         // TimerWheel contains the fixed number of slots regardless of precision.
-        this.slotsTotal = 60;
+        this.slotsTotal = 10;
         this.timerWheel = new TimerWheel(storeConfig,getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
                 this.slotsTotal, precisionMs);
         this.timerLog = new TimerLog(getTimerLogPath(storeConfig.getStorePathRootDir()), timerLogFileSize);

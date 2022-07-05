@@ -204,7 +204,7 @@ public class TimerWheel {
             }
             long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
             Slot nowSlot = this.getSlot(delayedTime);
-            System.out.printf("Dispatched. Slot %d to Slot %d.\n", slotDispatched.timeMs,nowSlot.timeMs);
+            // System.out.printf("Dispatched. Slot %d to Slot %d.\n", slotDispatched.timeMs,nowSlot.timeMs);
             try {
                 // 转发一条就更新一次maxOffsetTable
                 Long beforeSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);
@@ -251,7 +251,7 @@ public class TimerWheel {
         }
         MessageExt nextMessage = slot.getNextMessage(nowReadOffset);
         this.slotReadOffsetTable.replace(slot.timeMs,nextMessage.getStoreSize()+nowReadOffset);
-        System.out.printf("now message size:%d%n",nextMessage.getStoreSize());
+        // System.out.printf("now message size:%d%n",nextMessage.getStoreSize());
         return nextMessage;
     }
 

@@ -71,7 +71,7 @@ public class TimerProducer {
         messageSize = commandLine.hasOption("ms") ? Integer.parseInt(commandLine.getOptionValue("ms")) : 1024;
         precisionMs = commandLine.hasOption('p') ? Integer.parseInt(commandLine.getOptionValue("p")) : 1000;
         slotsTotal = commandLine.hasOption("st") ? Integer.parseInt(commandLine.getOptionValue("st")) : 100;
-        msgsTotalPerSlotThread = commandLine.hasOption("mt") ? Integer.parseInt(commandLine.getOptionValue("mt")) : 5000;
+        msgsTotalPerSlotThread = commandLine.hasOption("mt") ? Integer.parseInt(commandLine.getOptionValue("mt")) : 2000;
         slotDis = commandLine.hasOption("sd") ? Integer.parseInt(commandLine.getOptionValue("sd")) : 1000;
         System.out.printf("namesrvAddr: %s, topic: %s, threadCount: %d, messageSize: %d, precisionMs: %d, slotsTotal: %d, msgsTotalPerSlotThread: %d, slotDis: %d%n",
                 namesrvAddr, topic, threadCount, messageSize, precisionMs, slotsTotal, msgsTotalPerSlotThread, slotDis);

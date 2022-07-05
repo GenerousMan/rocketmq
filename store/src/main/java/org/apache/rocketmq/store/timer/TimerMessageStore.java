@@ -117,7 +117,7 @@ public class TimerMessageStore {
         this.timerLogFileSize = storeConfig.getMappedFileSizeTimerLog();
         this.precisionMs = storeConfig.getTimerPrecisionMs();
         // TimerWheel contains the fixed number of slots regardless of precision.
-        this.slotsTotal = 10;
+        this.slotsTotal = 60;
         this.timerWheel = new TimerWheel(storeConfig,getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
                 this.slotsTotal, precisionMs);
         this.timerLog = new TimerLog(getTimerLogPath(storeConfig.getStorePathRootDir()), timerLogFileSize);
@@ -756,7 +756,7 @@ public class TimerMessageStore {
                 MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
                 doPut(msgReputInner);
                 count+=1;
-                System.out.printf("now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
+                // System.out.printf("now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
             }
             moveReadTime();
         } catch (Throwable t){

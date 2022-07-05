@@ -202,9 +202,9 @@ public class TimerWheel {
             if(msgDispatched==null){
                 break;
             }
-            System.out.printf("Dispatched.");
             long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
             Slot nowSlot = this.getSlot(delayedTime);
+            System.out.printf("Dispatched. Slot %d to Slot %d.\n", slotDispatched.timeMs,nowSlot.timeMs);
             try {
                 // 转发一条就更新一次maxOffsetTable
                 Long beforeSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);

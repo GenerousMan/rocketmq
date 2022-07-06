@@ -83,6 +83,8 @@ public class TimerMessageStore {
     private final TimerDequeueGetMessageService[] dequeueGetMessageServices;
     private final TimerFlushService timerFlushService;
 
+    private final ExecutorService sendThreadPool;
+
     private volatile long currReadTimeMs;
     private volatile long currWriteTimeMs;
     private volatile long preReadTimeMs;
@@ -137,6 +139,15 @@ public class TimerMessageStore {
                 return ByteBuffer.allocateDirect(storeConfig.getMaxMessageSize() + 100);
             }
         };
+
+        sendThreadPool = new ThreadPoolExecutor(
+                8,
+                8,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(),
+                new ThreadFactoryImpl("ProducerSendMessageThread_"));
+
         enqueueGetService = new TimerEnqueueGetService();
         enqueuePutService = new TimerEnqueuePutService();
         dequeueWarmService = new TimerDequeueWarmService();
@@ -746,23 +757,26 @@ public class TimerMessageStore {
             System.out.printf("slot %d empty.%n",slot.timeMs);
             return 0;
         }
-        try{
+        sendThreadPool.execute(new Runnable() {
+            @Override
+            public void run() {
             int count = 0;
             while(true) {
-                MessageExt msgReput = timerWheel.getSlotNextMessage(slot);
-                if(msgReput==null){
+                try {
+                    MessageExt msgReput = timerWheel.getSlotNextMessage(slot);
+                    if(msgReput==null){
+                        break;
+                    }
+                    MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
+                    doPut(msgReputInner);
+                } catch (Exception e) {
+                    System.out.printf("Message put wrong:"+e+"\n");
                     break;
                 }
-                MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
-                doPut(msgReputInner);
                 count+=1;
-                // System.out.printf("now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
-            }
-            moveReadTime();
-        } catch (Throwable t){
-            System.out.printf("Something wrong while reput message.");
-            moveReadTime();
-        }
+                // System.out.printf("[Dequeue] Now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
+            }}});
+        moveReadTime();
         return 1;
     }
 
@@ -987,7 +1001,7 @@ public class TimerMessageStore {
     }
 
 
-    private long formatTimeMs(long timeMs) {
+    public long formatTimeMs(long timeMs) {
         return timeMs / precisionMs * precisionMs;
     }
 
@@ -1222,7 +1236,7 @@ public class TimerMessageStore {
             while (!this.isStopped()) {
                 try {
                     timerWheel.deleteExpiredItems();
-                    waitForRunning(1000);
+                    waitForRunning(100);
                     continue;
                 } catch (Throwable e) {
                     TimerMessageStore.log.error("Unknown error", e);

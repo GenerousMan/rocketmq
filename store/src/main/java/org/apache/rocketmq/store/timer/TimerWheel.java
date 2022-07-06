@@ -52,6 +52,9 @@ public class TimerWheel {
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
     private final ByteBuffer byteBuffer;
+    private final int deleteDelaySlot = 30;
+    private final int tickBeforeSlot = 10;
+
     private final ThreadLocal<ByteBuffer> localBuffer = new ThreadLocal<ByteBuffer>() {
         @Override
         protected ByteBuffer initialValue() {
@@ -134,10 +137,6 @@ public class TimerWheel {
             }
             return null;
         }
-//        Slot slot = getRawSlot(timeMs);
-//        if (slot.timeMs != timeMs / precisionMs * precisionMs) {
-//            return new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
-//        }
         Slot slot = slotTable.get(timeMs / precisionMs * precisionMs);
         if(slot==null){
             slot = new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
@@ -145,6 +144,16 @@ public class TimerWheel {
         }
         return slot;
     }
+
+    public Slot forceGetSlotHere(long timeMs){
+        Slot slot = slotTable.get(timeMs / precisionMs * precisionMs);
+        if(slot==null){
+            slot = new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
+            slotTable.put(slot.timeMs, slot);
+        }
+        return slot;
+    }
+
     //testable
     public Slot getRawSlot(long timeMs) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
@@ -157,10 +166,11 @@ public class TimerWheel {
 
     public void Tick(long timeMs){
         // 逐层向上找当前时间的slot，如果有，则无条件转发到本层的所有slot中。
+        long preTimeMs = preTickTimeMs(timeMs);
         if(this.nextWheel!=null){
             // 先递归把最上层的转发
-            nextWheel.Tick(timeMs);
-            Slot slotCheck = nextWheel.getSlot(timeMs);
+            nextWheel.Tick(preTimeMs);
+            Slot slotCheck = nextWheel.forceGetSlotHere(preTimeMs);
             Long maxOffset = nextWheel.slotMaxOffsetTable.get(slotCheck.timeMs);
             if(maxOffset!=null){
                 dispatchSlotMessage(slotCheck);
@@ -195,15 +205,20 @@ public class TimerWheel {
 
     public void dispatchSlotMessage(Slot slotDispatched){
         long slotTimeMs = slotDispatched.timeMs;
-        long tempNextOffset = 0;
-
-        while(true){
+        // 从上一次转发完的readOffset起始。
+        Long tempNextOffset = nextWheel.slotReadOffsetTable.get(slotTimeMs);
+        Long maxNextOffset = nextWheel.slotMaxOffsetTable.get(slotTimeMs);
+        if(tempNextOffset==null){
+            nextWheel.slotReadOffsetTable.put(slotTimeMs,0L);
+            tempNextOffset = 0L;
+        }
+        while(tempNextOffset<maxNextOffset){
             MessageExt msgDispatched = slotDispatched.getNextMessage(tempNextOffset);
             if(msgDispatched==null){
                 break;
             }
             long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
-            Slot nowSlot = this.getSlot(delayedTime);
+            Slot nowSlot = this.forceGetSlotHere(delayedTime);
             // System.out.printf("Dispatched. Slot %d to Slot %d.\n", slotDispatched.timeMs,nowSlot.timeMs);
             try {
                 // 转发一条就更新一次maxOffsetTable
@@ -215,14 +230,15 @@ public class TimerWheel {
                 long nowSlotOffset = nowSlot.putMessage(msgDispatched, beforeSlotOffset);
                 slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlotOffset);
                 tempNextOffset+=(nowSlotOffset-beforeSlotOffset);
-
+                nextWheel.slotReadOffsetTable.replace(slotTimeMs,tempNextOffset);
+                // System.out.printf("[%d] Slot %d dispatch to Slot %d finished once.now offset:%d, total:%d%n",System.currentTimeMillis(), slotTimeMs, nowSlot.timeMs, tempNextOffset, maxNextOffset);
                 putSlot(nowSlot.timeMs,nowSlot.num+1,nowSlot.magic);
             } catch (Exception e){
                 System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs,nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
             }
         }
-        // 转发完了，需要把上一层向本层转发的slot记录删除，并且清空上一层该slot的timerWheel记录。
-        nextWheel.slotMaxOffsetTable.remove(slotTimeMs);
+        // 转发完了，由于转发存在提前量，可能仍然会有一定消息写入，则此处不可以删除slotMaxOffsetTable中的指定项。
+        // nextWheel.slotMaxOffsetTable.remove(slotTimeMs);
         putSlot(slotDispatched.timeMs,0,slotDispatched.magic);
     }
 
@@ -242,11 +258,13 @@ public class TimerWheel {
 
     public MessageExt getSlotNextMessage(Slot slot){
         Long nowReadOffset = this.slotReadOffsetTable.get(slot.timeMs);
+        Long nowMaxOffset = this.slotMaxOffsetTable.get(slot.timeMs);
         if(nowReadOffset==null){
             this.slotReadOffsetTable.put(slot.timeMs,0L);
             nowReadOffset = 0L;
         }
-        if(this.slotMaxOffsetTable.get(slot.timeMs)==null || nowReadOffset>=this.slotMaxOffsetTable.get(slot.timeMs)){
+
+        if(nowMaxOffset==null || nowReadOffset>=nowMaxOffset){
             return null;
         }
         MessageExt nextMessage = slot.getNextMessage(nowReadOffset);
@@ -276,10 +294,21 @@ public class TimerWheel {
         return true;
     }
 
+    public long deleteTimeMs(long timeMs) {
+        return (timeMs / precisionMs - deleteDelaySlot) * precisionMs;
+    }
+
+    public long preTickTimeMs(long timeMs) {
+        return (timeMs / precisionMs + tickBeforeSlot) * precisionMs;
+    }
+
     public void deleteExpiredItems(){
         for(long item: slotMaxOffsetTable.keySet()){
-            if(item<System.currentTimeMillis()/precisionMs*precisionMs - slotsTotal / 2 * precisionMs){
+            if(slotReadOffsetTable.get(item)>=slotMaxOffsetTable.get(item) && item < deleteTimeMs(System.currentTimeMillis())){
+                System.out.printf("Now item deleted:%d%n",item);
                 slotMaxOffsetTable.remove(item);
+                slotReadOffsetTable.remove(item);
+                slotTable.get(item).clear();
                 slotTable.remove(item);
             }
         }

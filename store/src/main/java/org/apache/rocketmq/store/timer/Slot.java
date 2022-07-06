@@ -63,4 +63,8 @@ public class Slot {
     public void setMaxFlushedWhere(long maxFlushedWhere){
         this.slotLog.mappedFileQueue.setFlushedWhere(maxFlushedWhere);
     }
+
+    public void clear(){
+        this.slotLog.mappedFileQueue.destroy();
+    }
 }

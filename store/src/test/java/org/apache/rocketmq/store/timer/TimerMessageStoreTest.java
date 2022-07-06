@@ -29,9 +29,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.rocketmq.common.BrokerConfig;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
@@ -71,6 +75,7 @@ public class TimerMessageStoreTest {
     private MessageStore messageStore;
     private SocketAddress bornHost;
     private SocketAddress storeHost;
+    private ExecutorService sendThreadPool;
 
     private final int precisionMs = 500;
 
@@ -99,6 +104,14 @@ public class TimerMessageStoreTest {
         storeConfig.setFlushDiskType(FlushDiskType.ASYNC_FLUSH);
         storeConfig.setTimerInterceptDelayLevel(true);
         storeConfig.setTimerPrecisionMs(precisionMs);
+
+        sendThreadPool = new ThreadPoolExecutor(
+                8,
+                8,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(),
+                new ThreadFactoryImpl("ProducerSendMessageThread_"));
 
         messageStore = new DefaultMessageStore(storeConfig, new BrokerStatsManager("TimerTest",false), new MyMessageArrivingListener(), new BrokerConfig());
         boolean load = messageStore.load();

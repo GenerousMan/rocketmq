@@ -655,6 +655,20 @@ public class MappedFileQueue {
         }
     }
 
+    public void destroyFast() {
+        for (MappedFile mf : this.mappedFiles) {
+            mf.destroy(100);
+        }
+        this.mappedFiles.clear();
+        this.flushedWhere = 0;
+
+        // delete parent directory
+        File file = new File(storePath);
+        if (file.isDirectory()) {
+            file.delete();
+        }
+    }
+
     public long getFlushedWhere() {
         return this.flushedWhere;
     }

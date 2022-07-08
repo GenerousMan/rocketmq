@@ -16,15 +16,12 @@
  */
 package org.apache.rocketmq.example.quickstart;
 
-import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
-import org.apache.rocketmq.remoting.exception.RemotingException;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -34,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * This class demonstrates how to send messages to brokers using provided {@link DefaultMQProducer}.
  */
-public class Producer {
+public class TimerProducer {
 
     /**
      * The number of produced messages.
@@ -60,7 +57,7 @@ public class Producer {
 
     public static volatile int totalNum = 0;
     public static long timeStamp = System.currentTimeMillis();
-    public static long startTimeStamp = System.currentTimeMillis()+START_TIME_SEC*1000;
+    public static long startTimeStamp = System.currentTimeMillis();
 
     public static void main(String[] args) throws MQClientException, InterruptedException {
         /*

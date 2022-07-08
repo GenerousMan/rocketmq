@@ -58,8 +58,8 @@ public class Consumer {
             System.exit(-1);
         }
 
-        final String topic = commandLine.hasOption('t') ? commandLine.getOptionValue('t').trim() : "BenchmarkTest";
-        final int threadCount = commandLine.hasOption('w') ? Integer.parseInt(commandLine.getOptionValue('w')) : 20;
+        final String topic = commandLine.hasOption('t') ? commandLine.getOptionValue('t').trim() : "Delay_BenchmarkTest";
+        final int threadCount = commandLine.hasOption('w') ? Integer.parseInt(commandLine.getOptionValue('w')) : 3;
         final String groupPrefix = commandLine.hasOption('g') ? commandLine.getOptionValue('g').trim() : "benchmark_consumer";
         final String isSuffixEnable = commandLine.hasOption('p') ? commandLine.getOptionValue('p').trim() : "false";
         final String filterType = commandLine.hasOption('f') ? commandLine.getOptionValue('f').trim() : null;
@@ -137,6 +137,7 @@ public class Consumer {
             String ns = commandLine.getOptionValue('n');
             consumer.setNamesrvAddr(ns);
         }
+        consumer.setNamesrvAddr("127.0.0.1:9876");
         consumer.setConsumeThreadMin(threadCount);
         consumer.setConsumeThreadMax(threadCount);
         consumer.setInstanceName(Long.toString(System.currentTimeMillis()));

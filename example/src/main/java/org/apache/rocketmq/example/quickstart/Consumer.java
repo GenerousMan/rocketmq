@@ -29,9 +29,11 @@ public class Consumer {
 
     public static final String CONSUMER_GROUP = "please_rename_unique_group_name_4";
     public static final String DEFAULT_NAMESRVADDR = "127.0.0.1:9876";
-    public static final String TOPIC = "TopicTest";
-
+    public static final String TOPIC = "Delay_BenchmarkTest";
+    public static int count = 0;
+    public static long timeStamp = System.currentTimeMillis();
     public static void main(String[] args) throws InterruptedException, MQClientException {
+
 
         /*
          * Instantiate with specified consumer group name.
@@ -50,7 +52,7 @@ public class Consumer {
          * </pre>
          */
         // Uncomment the following line while debugging, namesrvAddr should be set to your local address
-//        consumer.setNamesrvAddr(DEFAULT_NAMESRVADDR);
+        consumer.setNamesrvAddr(DEFAULT_NAMESRVADDR);
 
         /*
          * Specify where to start in case the specific consumer group is a brand-new one.
@@ -66,7 +68,14 @@ public class Consumer {
          *  Register callback to execute on arrival of messages fetched from brokers.
          */
         consumer.registerMessageListener((MessageListenerConcurrently) (msg, context) -> {
-            System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msg);
+            count+=1;
+            if(count%10000==0){
+                long nowTime = System.currentTimeMillis();
+                System.out.printf("10000 consume finished. Cost:%d%n",nowTime-timeStamp);
+                timeStamp = nowTime;
+                count = 0;
+            }
+            // System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msg);
             return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
         });
 

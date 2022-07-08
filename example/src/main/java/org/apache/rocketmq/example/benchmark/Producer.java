@@ -75,7 +75,9 @@ public class Producer {
         final boolean aclEnable = commandLine.hasOption('a') && Boolean.parseBoolean(commandLine.getOptionValue('a'));
         final long messageNum = commandLine.hasOption('q') ? Long.parseLong(commandLine.getOptionValue('q')) : 0;
         final boolean delayEnable = commandLine.hasOption('d') && Boolean.parseBoolean(commandLine.getOptionValue('d'));
-        final int delayLevel = commandLine.hasOption('e') ? Integer.parseInt(commandLine.getOptionValue('e')) : 1;
+        final int delayTimeMin = commandLine.hasOption('f') ? Integer.parseInt(commandLine.getOptionValue('f')) :3600;
+        final int delayTimeMax = commandLine.hasOption('g') ? Integer.parseInt(commandLine.getOptionValue('g')) :7200;
+        final int delayLevel = commandLine.hasOption('e') ? Integer.parseInt(commandLine.getOptionValue('e')) : 0;
         final boolean asyncEnable = commandLine.hasOption('y') && Boolean.parseBoolean(commandLine.getOptionValue('y'));
         final int threadCount = asyncEnable ? 1 : commandLine.hasOption('w') ? Integer.parseInt(commandLine.getOptionValue('w')) : 64;
 
@@ -152,7 +154,7 @@ public class Producer {
             String ns = commandLine.getOptionValue('n');
             producer.setNamesrvAddr(ns);
         }
-
+        producer.setNamesrvAddr("127.0.0.1:9876");
         producer.setCompressMsgBodyOverHowmuch(Integer.MAX_VALUE);
 
         producer.start();
@@ -174,7 +176,9 @@ public class Producer {
                                 msg.setKeys(String.valueOf(beginTimestamp / 1000));
                             }
                             if (delayEnable) {
-                                msg.setDelayTimeLevel(delayLevel);
+                                int randomDelay = delayTimeMin + (int)(Math.random() * (delayTimeMax-delayTimeMin+1));
+                                msg.setDelayTimeSec(randomDelay);
+                                msg.setTopic("Delay_"+topic);
                             }
                             if (tagCount > 0) {
                                 msg.setTags(String.format("tag%d", System.currentTimeMillis() % tagCount));
@@ -339,6 +343,14 @@ public class Producer {
         options.addOption(opt);
 
         opt = new Option("y", "asyncEnable", true, "Enable async produce, Default: false");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        opt = new Option("f", "delayTimeMin", true, "Delay time min time, Default: 3600");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        opt = new Option("g", "delayTimeMax", true, "Delay time max time, Default: 7200");
         opt.setRequired(false);
         options.addOption(opt);
 

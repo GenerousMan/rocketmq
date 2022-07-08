@@ -130,7 +130,7 @@ public class TimerProducer {
         producer.start();
         System.out.printf("Start sending messages%n");
         List<Long> delayList = new ArrayList<Long>();
-        final long startDelayTime = System.currentTimeMillis() / precisionMs * precisionMs + 2 * 60 * 1000 + 10;
+        final long startDelayTime = System.currentTimeMillis() / precisionMs * precisionMs + 1200;
         for (int slotCnt = 0; slotCnt < slotsTotal; slotCnt++) {
             for (int msgCnt = 0; msgCnt < msgsTotalPerSlotThread; msgCnt++) {
                 long delayTime = startDelayTime + slotCnt * slotDis;

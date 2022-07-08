@@ -218,4 +218,8 @@ public class Message implements Serializable {
     public void setDelayTimeSec(long sec){
         this.putProperty(MessageConst.PROPERTY_TIMER_DELAY_SEC, String.valueOf(sec));
     }
+
+    public void setDeliverTimeMs(long timeMs){
+        this.putProperty(MessageConst.PROPERTY_TIMER_DELIVER_MS, String.valueOf(timeMs));
+    }
 }

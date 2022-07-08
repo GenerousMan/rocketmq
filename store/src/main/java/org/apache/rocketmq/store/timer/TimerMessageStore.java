@@ -44,6 +44,8 @@ public class TimerMessageStore {
     public static final String TIMER_DEQUEUE_MS = MessageConst.PROPERTY_TIMER_DEQUEUE_MS;
     public static final String TIMER_ROLL_TIMES = MessageConst.PROPERTY_TIMER_ROLL_TIMES;
     public static final String TIMER_DELETE_UNIQKEY = MessageConst.PROPERTY_TIMER_DEL_UNIQKEY;
+    public int statisticNum = 0;
+    public long statisticTime = System.currentTimeMillis();
     public static final Random RANDOM = new Random();
     public static final int PUT_OK = 0, PUT_NEED_RETRY = 1, PUT_NO_RETRY = 2;
     public static final int DAY_SECS = 24 * 3600;
@@ -919,6 +921,13 @@ public class TimerMessageStore {
                             this.brokerStatsManager.incTopicPutSize(message.getTopic(),
                                     putMessageResult.getAppendMessageResult().getWroteBytes());
                             this.brokerStatsManager.incBrokerPutNums(1);
+                            statisticNum+=1;
+                            if(statisticNum%10000==0) {
+                                statisticNum = 0;
+                                long timeNew = System.currentTimeMillis();
+                                System.out.printf("10000 put OK, cost time: %d%n", (timeNew-this.statisticTime));
+                                this.statisticTime = timeNew;
+                            }
                         }
                         return PUT_OK;
                     case SERVICE_NOT_AVAILABLE:
@@ -936,7 +945,7 @@ public class TimerMessageStore {
                         retryNum++;
                 }
             }
-            Thread.sleep(50);
+            // Thread.sleep(50);
             putMessageResult = messageStore.putMessage(message);
             log.warn("Retrying to do put timer msg retryNum:{} putRes:{} msg:{}", retryNum, putMessageResult, message);
         }
@@ -995,6 +1004,10 @@ public class TimerMessageStore {
 
         msgInner.setTopic(msgInner.getProperty(MessageConst.PROPERTY_REAL_TOPIC));
         msgInner.setQueueId(Integer.parseInt(msgInner.getProperty(MessageConst.PROPERTY_REAL_QUEUE_ID)));
+        MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TIMER_DELIVER_MS);
+        MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TIMER_DELAY_MS);
+        MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TIMER_DELAY_SEC);
+        MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_TIMER_OUT_MS);
         MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC);
         MessageAccessor.clearProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID);
         return msgInner;

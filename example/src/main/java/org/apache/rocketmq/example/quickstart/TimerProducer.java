@@ -57,7 +57,7 @@ public class TimerProducer {
 
     public static volatile int totalNum = 0;
     public static long timeStamp = System.currentTimeMillis();
-    public static long startTimeStamp = System.currentTimeMillis();
+    public static long startTimeStamp = System.currentTimeMillis()+START_TIME_SEC*1000;
 
     public static void main(String[] args) throws MQClientException, InterruptedException {
         /*

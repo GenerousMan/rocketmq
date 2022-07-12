@@ -63,6 +63,7 @@ public class TimerWheel {
     };
     private final int wheelLength;
     private final MessageStoreConfig storeConfig;
+    Long temp = 0L;
     public TimerWheel(MessageStoreConfig storeConfig, String fileName, int slotsTotal, int precisionMs) throws IOException {
         this.slotsTotal = slotsTotal;
         this.precisionMs = precisionMs;
@@ -117,17 +118,12 @@ public class TimerWheel {
     }
 
     public void flush() {
-        ByteBuffer bf = localBuffer.get();
-        bf.position(0);
-        bf.limit(wheelLength);
-        mappedByteBuffer.position(0);
-        mappedByteBuffer.limit(wheelLength);
-        for (int i = 0; i < wheelLength; i++) {
-            if (bf.get(i) != mappedByteBuffer.get(i)) {
-                mappedByteBuffer.put(i, bf.get(i));
-            }
+        if(this.nextWheel!=null) {
+            this.nextWheel.flush();
         }
-        this.mappedByteBuffer.force();
+        for(Slot slot:slotTable.values()){
+            slot.slotLog.flush();
+        }
     }
 
     public Slot getSlot(long timeMs){
@@ -212,10 +208,14 @@ public class TimerWheel {
             nextWheel.slotReadOffsetTable.put(slotTimeMs,0L);
             tempNextOffset = 0L;
         }
+        int count = 0;
         while(tempNextOffset<maxNextOffset){
             MessageExt msgDispatched = slotDispatched.getNextMessage(tempNextOffset);
             if(msgDispatched==null){
-                break;
+                long slotLogSize = storeConfig.getMappedFileSizeSlotLog();
+                // 下个文件的起点位置。
+                tempNextOffset = tempNextOffset / slotLogSize * slotLogSize + slotLogSize;
+                msgDispatched = slotDispatched.getNextMessage(tempNextOffset);
             }
             long delayedTime = Long.parseLong(msgDispatched.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
             Slot nowSlot = this.forceGetSlotHere(delayedTime);
@@ -231,7 +231,7 @@ public class TimerWheel {
                 slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlotOffset);
                 tempNextOffset+=(nowSlotOffset-beforeSlotOffset);
                 nextWheel.slotReadOffsetTable.replace(slotTimeMs,tempNextOffset);
-                // System.out.printf("[%d] Slot %d dispatch to Slot %d finished once.now offset:%d, total:%d%n",System.currentTimeMillis(), slotTimeMs, nowSlot.timeMs, tempNextOffset, maxNextOffset);
+                log.info("["+System.currentTimeMillis()+ "]Slot "+slotTimeMs+" dispatch to Slot" +nowSlot.timeMs+" finished once.now offset:"+tempNextOffset+", total: "+maxNextOffset+"\n");
                 putSlot(nowSlot.timeMs,nowSlot.num+1,nowSlot.magic);
             } catch (Exception e){
                 System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs,nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
@@ -302,17 +302,33 @@ public class TimerWheel {
         return (timeMs / precisionMs + tickBeforeSlot) * precisionMs;
     }
 
-    public void deleteExpiredItems(){
-        for(long item: slotMaxOffsetTable.keySet()){
-            if(slotReadOffsetTable.get(item)>=slotMaxOffsetTable.get(item) && item < deleteTimeMs(System.currentTimeMillis())){
-                System.out.printf("Now item deleted:%d%n",item);
-                slotMaxOffsetTable.remove(item);
-                slotReadOffsetTable.remove(item);
-                slotTable.get(item).clear();
-                slotTable.remove(item);
+    public void deleteExpiredItems() {
+        try {
+            if (slotMaxOffsetTable.size() > 0 && slotReadOffsetTable.size() > 0) {
+                for (Long item : slotMaxOffsetTable.keySet()) {
+                    if (item == null) {
+                        break;
+                    }
+                    Long readOffset = slotReadOffsetTable.get(item);
+                    Long maxOffset = slotMaxOffsetTable.get(item);
+                    if(readOffset == null || maxOffset == null){
+                        continue;
+                    }
+                    if (readOffset >= maxOffset && item < deleteTimeMs(System.currentTimeMillis())) {
+                        System.out.printf("Now item deleted:%d%n", item);
+                        slotMaxOffsetTable.remove(item);
+                        slotReadOffsetTable.remove(item);
+                        // slotTable.get(item).clear();
+                        slotTable.remove(item);
+                    }
+                }
+                if(this.nextWheel!=null) {
+                    this.nextWheel.deleteExpiredItems();
+                }
             }
+        } catch (Exception e){
+            // System.out.printf("error:"+e);
         }
-        this.nextWheel.deleteExpiredItems();
     }
 
     public void putSlot(long timeMs, long firstPos, long lastPos) {

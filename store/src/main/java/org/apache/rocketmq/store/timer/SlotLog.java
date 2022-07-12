@@ -134,7 +134,6 @@ public class SlotLog {
         try {
             mappedFile.appendMessage(encodeMsg,0,encodeMsg.length);
             this.slotMaxOffset = putOffset+encodeMsg.length;
-            this.flush();
             return slotMaxOffset;
         } catch (Exception e){
             return putOffset;

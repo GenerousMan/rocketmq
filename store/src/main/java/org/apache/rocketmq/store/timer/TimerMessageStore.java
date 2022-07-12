@@ -772,7 +772,7 @@ public class TimerMessageStore {
                     MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
                     doPut(msgReputInner);
                 } catch (Exception e) {
-                    System.out.printf("Message put wrong:"+e+"\n");
+                    // System.out.printf("Message put wrong:"+e+"\n");
                     break;
                 }
                 count+=1;
@@ -945,7 +945,7 @@ public class TimerMessageStore {
                         retryNum++;
                 }
             }
-            // Thread.sleep(50);
+            Thread.sleep(50);
             putMessageResult = messageStore.putMessage(message);
             log.warn("Retrying to do put timer msg retryNum:{} putRes:{} msg:{}", retryNum, putMessageResult, message);
         }
@@ -1249,10 +1249,9 @@ public class TimerMessageStore {
             while (!this.isStopped()) {
                 try {
                     timerWheel.deleteExpiredItems();
-                    waitForRunning(100);
+                    waitForRunning(10000);
                     continue;
                 } catch (Throwable e) {
-                    TimerMessageStore.log.error("Unknown error", e);
                 }
             }
             TimerMessageStore.log.info(this.getServiceName() + " service end");
@@ -1518,15 +1517,7 @@ public class TimerMessageStore {
                     timerLog.getMappedFileQueue().flush(0);
                     if (System.currentTimeMillis() - start > storeConfig.getTimerProgressLogIntervalMs()) {
                         start = System.currentTimeMillis();
-                        long tmpQueueOffset = currQueueOffset;
                         ConsumeQueue cq = messageStore.getConsumeQueue(TIMER_TOPIC, 0);
-                        long maxOffsetInQueue = cq == null ? 0 : cq.getMaxOffsetInQueue();
-                        TimerMessageStore.log.info("[{}]Timer progress-check commitRead:[{}] currRead:[{}] currWrite:[{}] readBehind:{} currReadOffset:{} offsetBehind:{} behindMaster:{} " +
-                                        "enqPutQueue:{} deqGetQueue:{} deqPutQueue:{} allCongestNum:{} enqExpiredStoreTime:{}",
-                                storeConfig.getBrokerRole(),
-                                format(commitReadTimeMs), format(currReadTimeMs), format(currWriteTimeMs), getReadBehind(),
-                                tmpQueueOffset, maxOffsetInQueue - tmpQueueOffset, timerCheckpoint.getMasterTimerQueueOffset() - tmpQueueOffset,
-                                enqueuePutQueue.size(), dequeueGetQueue.size(), dequeuePutQueue.size(), getALlCongestNum(), format(lastEnqueueButExpiredStoreTime));
                     }
                     timerMetrics.persist();
                     waitForRunning(storeConfig.getTimerFlushIntervalMs());

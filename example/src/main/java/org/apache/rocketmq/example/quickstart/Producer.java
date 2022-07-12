@@ -16,6 +16,11 @@
  */
 package org.apache.rocketmq.example.quickstart;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
@@ -25,7 +30,9 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.apache.rocketmq.srvutil.ServerUtil;
 
+import java.io.UnsupportedEncodingException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -39,16 +46,17 @@ public class Producer {
     /**
      * The number of produced messages.
      */
-    public static final int MESSAGE_COUNT_SEC = 10000;
-    public static final int TOTAL_TIME_SEC = 3600;
-    public static final int START_TIME_SEC = 3700;
+    public static int MESSAGE_COUNT_SEC = 20000;
+    public static int MESSAGE_SIZE = 1024;
+    public static final int TOTAL_TIME_SEC = 2000;
+    public static final int START_TIME_SEC = 2000;
     public static final int END_TIME_SEC = START_TIME_SEC+TOTAL_TIME_SEC;
-    public static final int MESSAGE_COUNT = MESSAGE_COUNT_SEC*TOTAL_TIME_SEC;
+    public static int MESSAGE_COUNT = MESSAGE_COUNT_SEC*TOTAL_TIME_SEC;
 
     public static final int THREAD_COUNT = 8;
     public static final String PRODUCER_GROUP = "please_rename_unique_group_name";
     public static final String DEFAULT_NAMESRVADDR = "127.0.0.1:9876";
-    public static final String TOPIC = "Delay_BenchmarkTest";
+    public static String TOPIC = "Delay_BenchmarkTest";
     public static final String TAG = "TagA";
     private static final ExecutorService sendThreadPool = new ThreadPoolExecutor(
             THREAD_COUNT,
@@ -61,12 +69,55 @@ public class Producer {
     public static volatile int totalNum = 0;
     public static long timeStamp = System.currentTimeMillis();
     public static long startTimeStamp = System.currentTimeMillis()+START_TIME_SEC*1000;
+    private static Options buildCommandlineOptions(Options options) {
+        Option opt = new Option("n", "namesrvAddr", true, "Nameserver address, default: localhost:9876");
+        opt.setRequired(false);
+        options.addOption(opt);
 
+        opt = new Option("t", "topic", true, "Send messages to which topic, default: BenchmarkTest");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        opt = new Option("ms", "messageSize", true, "Message Size, default: 128");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        opt = new Option("d", "delayEnable", true, "Delay message Enable, Default: true");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        opt = new Option("mp", "msgsTotalPerSlot", true, "Messages total for each slot and each thread, default: 100");
+        opt.setRequired(false);
+        options.addOption(opt);
+
+        return options;
+    }
+    public static Message buildMessage(final int messageSize, final String topic) throws UnsupportedEncodingException {
+        Message msg = new Message();
+        msg.setTopic(topic);
+
+        String body = StringUtils.repeat('a', messageSize);
+        msg.setBody(body.getBytes(RemotingHelper.DEFAULT_CHARSET));
+
+        return msg;
+    }
     public static void main(String[] args) throws MQClientException, InterruptedException {
         /*
          * Instantiate with a producer group name.
          */
+        Options options = ServerUtil.buildCommandlineOptions(new Options());
+        final CommandLine commandLine = ServerUtil.parseCmdLine("benchmarkTimerProducer", args, buildCommandlineOptions(options), new DefaultParser());
+        if (null == commandLine) {
+            System.exit(-1);
+        }
 
+        MESSAGE_COUNT_SEC = commandLine.hasOption("mp") ? Integer.parseInt(commandLine.getOptionValue("mp")) : 10000;
+        final boolean delayEnable = commandLine.hasOption('d') && Boolean.parseBoolean(commandLine.getOptionValue('d'));
+        TOPIC = commandLine.hasOption('t') ? commandLine.getOptionValue('t').trim() : "BenchmarkTest";
+
+        MESSAGE_COUNT = MESSAGE_COUNT_SEC * TOTAL_TIME_SEC;
+
+        System.out.printf("options:"+MESSAGE_COUNT_SEC+" "+delayEnable+" "+TOPIC+" "+" \n");
 
         for (int i = 0; i < THREAD_COUNT; i++) {
             int finalI = i;
@@ -77,14 +128,15 @@ public class Producer {
                         DefaultMQProducer producer = new DefaultMQProducer(PRODUCER_GROUP+ finalI);
                         producer.setNamesrvAddr("127.0.0.1:9876");
                         producer.start();
-
+                        Message msg = buildMessage(MESSAGE_SIZE,TOPIC);
                         for (int j = 0; j < MESSAGE_COUNT / THREAD_COUNT; j++) {
-                            Message msg = new Message(TOPIC /* Topic */,
-                                    TAG /* Tag */,
-                                    ("Hello RocketMQ ").getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
-                            );
-                            long randomDelay = startTimeStamp + (long)(Math.random() * (END_TIME_SEC-START_TIME_SEC+1)*1000);
-                            msg.setDeliverTimeMs(randomDelay);
+                            double random = Math.random();
+
+                            long randomDelay = startTimeStamp + (long)(random * (END_TIME_SEC-START_TIME_SEC+1)*1000);
+                            //System.out.printf("random: "+random+" ;delay time:%d%n",(randomDelay-(startTimeStamp-START_TIME_SEC*1000))/1000);
+                            if(delayEnable) {
+                                msg.setDeliverTimeMs(randomDelay);
+                            }
                             /*
                              * Call send message to deliver message to one of brokers.
                              */

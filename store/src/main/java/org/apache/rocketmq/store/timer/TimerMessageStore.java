@@ -756,7 +756,9 @@ public class TimerMessageStore {
         Slot slot = timerWheel.getSlot(currReadTimeMs);
         if (slot.num==0) {
             moveReadTime();
-            System.out.printf("slot %d empty.%n",slot.timeMs);
+            Date date = new Date();
+            date.setTime(slot.timeMs);
+            System.out.printf("slot "+date+" empty.%n");
             return 0;
         }
         sendThreadPool.execute(new Runnable() {
@@ -1248,10 +1250,12 @@ public class TimerMessageStore {
             TimerMessageStore.log.info(this.getServiceName() + " service start");
             while (!this.isStopped()) {
                 try {
+                    timerWheel.printAllSlot();
                     timerWheel.deleteExpiredItems();
                     waitForRunning(10000);
                     continue;
                 } catch (Throwable e) {
+                    waitForRunning(1000);
                 }
             }
             TimerMessageStore.log.info(this.getServiceName() + " service end");

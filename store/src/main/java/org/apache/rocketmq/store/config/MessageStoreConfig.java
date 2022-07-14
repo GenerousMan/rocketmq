@@ -42,7 +42,7 @@ public class MessageStoreConfig {
 
     // CommitLog file size,default is 1G
     private int mappedFileSizeCommitLog = 1024 * 1024 * 1024;
-    private int mappedFileSizeSlotLog = 10 * 1024 * 1024;
+    private int mappedFileSizeSlotLog = 100 * 1024 * 1024;
 
     // TimerLog file size, default is 100M
     private int mappedFileSizeTimerLog = 100 * 1024 * 1024;

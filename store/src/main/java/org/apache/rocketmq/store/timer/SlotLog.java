@@ -44,7 +44,7 @@ public class SlotLog {
         String storePath = storeConfig.getStorePathSlotLog(precision, timeMs);
         this.slotMaxOffset = 0;
         this.mappedFileQueue = new MappedFileQueue(storePath,
-                storeConfig.getMappedFileSizeCommitLog(),
+                storeConfig.getMappedFileSizeSlotLog(),
                 allocateMappedFileService);
         putMessageThreadLocal = new ThreadLocal<PutMessageThreadLocal>() {
             @Override
@@ -121,21 +121,27 @@ public class SlotLog {
 
         byte[] encodeMsg = MessageDecoder.encode(msg,false);
 
-        int msgFileOffset = 0;
+        long msgFileOffset = 0;
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
-        if(mappedFile==null || putOffset+encodeMsg.length >= mappedFile.getFileSize()){
+        long totalPutOffset = (long)(this.mappedFileQueue.getMappedFiles().size()) * (long)storeConfig.getMappedFileSizeSlotLog();
+        if(mappedFile==null || putOffset+encodeMsg.length >= totalPutOffset){
+            if(mappedFile!=null){
+                mappedFile.setWrotePosition(mappedFile.getFileSize());
+            }
             mappedFile = this.mappedFileQueue.getLastMappedFile(0);
             msgFileOffset = 0;
-            putOffset = (this.mappedFileQueue.getMappedFiles().size()-1) * mappedFile.getFileSize();
+            putOffset = (long)(this.mappedFileQueue.getMappedFiles().size()-1) * (long)mappedFile.getFileSize();
         } else{
-            msgFileOffset = (int) (putOffset - (this.mappedFileQueue.getMappedFiles().size()-1) * mappedFile.getFileSize());
+            msgFileOffset = (putOffset - (long)(this.mappedFileQueue.getMappedFiles().size()-1) * (long)mappedFile.getFileSize());
         }
-        mappedFile.setWrotePosition(msgFileOffset);
+        mappedFile.setWrotePosition((int)msgFileOffset);
         try {
             mappedFile.appendMessage(encodeMsg,0,encodeMsg.length);
             this.slotMaxOffset = putOffset+encodeMsg.length;
+            // System.out.printf("After put offset:%d.%n",slotMaxOffset);
             return slotMaxOffset;
         } catch (Exception e){
+            System.out.printf("Put to slot error:"+e+"\n");
             return putOffset;
         }
     }

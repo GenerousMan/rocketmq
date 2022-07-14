@@ -46,10 +46,10 @@ public class Producer {
     /**
      * The number of produced messages.
      */
-    public static int MESSAGE_COUNT_SEC = 20000;
+    public static int MESSAGE_COUNT_SEC = 10000;
     public static int MESSAGE_SIZE = 1024;
-    public static final int TOTAL_TIME_SEC = 2000;
-    public static final int START_TIME_SEC = 2000;
+    public static final int TOTAL_TIME_SEC = 3600;
+    public static final int START_TIME_SEC = 3600;
     public static final int END_TIME_SEC = START_TIME_SEC+TOTAL_TIME_SEC;
     public static int MESSAGE_COUNT = MESSAGE_COUNT_SEC*TOTAL_TIME_SEC;
 

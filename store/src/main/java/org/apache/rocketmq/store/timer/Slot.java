@@ -29,15 +29,6 @@ public class Slot {
     public int num;
     public final int magic; //no use now, just keep it
 
-    public Slot(long timeMs, long firstPos, long lastPos) {
-        this.timeMs = timeMs;
-        this.slotLog = new SlotLog(timeMs, storeConfig, null);
-        this.firstPos = firstPos;
-        this.lastPos = lastPos;
-        this.num = 0;
-        this.magic = 0;
-    }
-
     //TODO: only keep this one.
     public Slot(int precision, long timeMs, int num, int magic) {
         this.timeMs = timeMs;

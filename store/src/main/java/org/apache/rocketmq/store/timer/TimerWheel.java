@@ -21,7 +21,6 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.store.ConsumeQueue;
 import org.apache.rocketmq.store.MappedFile;
 import org.apache.rocketmq.store.config.MessageStoreConfig;
 
@@ -32,8 +31,11 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 public class TimerWheel {
 
@@ -194,7 +196,7 @@ public class TimerWheel {
             long newMaxOffset = slot.putMessage(msg, maxOffset);
             // System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
             this.slotMaxOffsetTable.replace(slot.timeMs,newMaxOffset);
-            this.slotTable.put(timeMs,slot);
+            this.slotTable.put(slot.timeMs,slot);
             // putSlot(slot.timeMs,slot.num+1,slot.magic);
         }
     }
@@ -328,6 +330,28 @@ public class TimerWheel {
             }
         } catch (Exception e){
             // System.out.printf("error:"+e);
+        }
+    }
+
+    public void printAllSlot() {
+        if(this.nextWheel!=null){
+            this.nextWheel.printAllSlot();
+        }
+        Date nowDate = new Date();
+        System.out.printf("-----------------[Now time"+nowDate+"]----------------\n");
+        System.out.printf("---------[Wheel Precision %d]--------\n",precisionMs);
+        System.out.printf("Now slot num:%d\n",slotTable.size());
+        System.out.printf("Now max slot offset num:%d\n",slotMaxOffsetTable.size());
+        System.out.printf("Now read slot offset num:%d\n",slotReadOffsetTable.size());
+        List<Long> keyList = Collections.list(slotMaxOffsetTable.keys());
+        Collections.sort(keyList);
+        for(int i=0; i<slotMaxOffsetTable.size();i++){
+            long timeStamp = keyList.get(i);
+            Date date = new Date();
+            date.setTime(timeStamp);
+            Long maxOffset = slotMaxOffsetTable.get(timeStamp);
+            Long readOffset = slotReadOffsetTable.get(timeStamp);
+            System.out.printf("[Slot "+date+"] Max offset:"+maxOffset/1024+" KB, read: "+(readOffset==null? 0 :readOffset/1024)+"\n");
         }
     }
 

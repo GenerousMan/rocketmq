@@ -126,6 +126,7 @@ public class TimerWheel {
         for(Slot slot:slotTable.values()){
             slot.slotLog.flush();
         }
+        this.mappedByteBuffer.force();
     }
 
     public Slot getSlot(long timeMs){

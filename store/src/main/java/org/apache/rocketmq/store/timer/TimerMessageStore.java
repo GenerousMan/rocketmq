@@ -122,7 +122,7 @@ public class TimerMessageStore {
         this.precisionMs = storeConfig.getTimerPrecisionMs();
         // TimerWheel contains the fixed number of slots regardless of precision.
         this.slotsTotal = 10;
-        this.timerWheel = new TimerWheel(storeConfig,getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
+        this.timerWheel = new TimerWheel(storeConfig, getTimerWheelPath(storeConfig.getStorePathRootDir(), this.precisionMs),
                 this.slotsTotal, precisionMs);
         this.timerLog = new TimerLog(getTimerLogPath(storeConfig.getStorePathRootDir()), timerLogFileSize);
         this.timerMetrics = timerMetrics;
@@ -754,32 +754,34 @@ public class TimerMessageStore {
         }
 
         Slot slot = timerWheel.getSlot(currReadTimeMs);
-        if (slot.num==0) {
+        if (slot.num == 0) {
             moveReadTime();
             Date date = new Date();
             date.setTime(slot.timeMs);
-            System.out.printf("slot "+date+" empty.%n");
+            System.out.printf("slot " + date + " empty.%n");
             return 0;
         }
         sendThreadPool.execute(new Runnable() {
             @Override
             public void run() {
-            int count = 0;
-            while(true) {
-                try {
-                    MessageExt msgReput = timerWheel.getSlotNextMessage(slot);
-                    if(msgReput==null){
+                int count = 0;
+                while (true) {
+                    try {
+                        MessageExt msgReput = timerWheel.getSlotNextMessage(slot);
+                        if (msgReput == null) {
+                            break;
+                        }
+                        MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
+                        doPut(msgReputInner);
+                    } catch (Exception e) {
+                        // System.out.printf("Message put wrong:"+e+"\n");
                         break;
                     }
-                    MessageExtBrokerInner msgReputInner = convertMessage(msgReput);
-                    doPut(msgReputInner);
-                } catch (Exception e) {
-                    // System.out.printf("Message put wrong:"+e+"\n");
-                    break;
+                    count += 1;
+                    // System.out.printf("[Dequeue] Now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
                 }
-                count+=1;
-                // System.out.printf("[Dequeue] Now slot %d has added %d message, total %d%n",slot.timeMs,count,slot.num);
-            }}});
+            }
+        });
         moveReadTime();
         return 1;
     }
@@ -853,7 +855,6 @@ public class TimerMessageStore {
     }
 
 
-
     //0 succ; 1 fail, need retry; 2 fail, do not retry;
     private int doPut(MessageExtBrokerInner message, boolean roll) throws Exception {
         if (lastBrokerRole == BrokerRole.SLAVE) {
@@ -906,7 +907,7 @@ public class TimerMessageStore {
             log.warn("Trying do put timer msg in slave, [{}]", message);
             return PUT_NO_RETRY;
         }
-        if ( null != message.getProperty(MessageConst.PROPERTY_TIMER_DEL_UNIQKEY)) {
+        if (null != message.getProperty(MessageConst.PROPERTY_TIMER_DEL_UNIQKEY)) {
             log.warn("Trying do put delete timer msg:[{}] roll:[{}]", message);
             return PUT_NO_RETRY;
         }
@@ -923,11 +924,11 @@ public class TimerMessageStore {
                             this.brokerStatsManager.incTopicPutSize(message.getTopic(),
                                     putMessageResult.getAppendMessageResult().getWroteBytes());
                             this.brokerStatsManager.incBrokerPutNums(1);
-                            statisticNum+=1;
-                            if(statisticNum%10000==0) {
+                            statisticNum += 1;
+                            if (statisticNum % 10000 == 0) {
                                 statisticNum = 0;
                                 long timeNew = System.currentTimeMillis();
-                                System.out.printf("10000 put OK, cost time: %d%n", (timeNew-this.statisticTime));
+                                System.out.printf("10000 put OK, cost time: %d%n", (timeNew - this.statisticTime));
                                 this.statisticTime = timeNew;
                             }
                         }

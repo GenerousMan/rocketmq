@@ -61,18 +61,17 @@ public class SlotLog {
         return this.mappedFileQueue.getFlushedWhere();
     }
 
-    public void load(){
+    public void load() {
         this.mappedFileQueue.load();
     }
 
-    public void recoverOffset(){
+    public void recoverOffset() {
         long maxOffset = 0;
-        while(true){
+        while (true) {
             long newOffset = getNextMessageOffset(maxOffset);
-            if(newOffset!=-1){
+            if (newOffset != -1) {
                 maxOffset = newOffset;
-            }
-            else{
+            } else {
                 break;
             }
         }
@@ -89,6 +88,7 @@ public class SlotLog {
         }
         return false;
     }
+
     public int deleteExpiredFile(
             final long expiredTime,
             final int deleteFilesInterval,
@@ -98,15 +98,15 @@ public class SlotLog {
         return this.mappedFileQueue.deleteExpiredFileByTime(expiredTime, deleteFilesInterval, intervalForcibly, cleanImmediately);
     }
 
-    public byte[] byteMerger(byte[] byte_1, byte[] byte_2){
-        byte[] byte_3 = new byte[byte_1.length+byte_2.length];
+    public byte[] byteMerger(byte[] byte_1, byte[] byte_2) {
+        byte[] byte_3 = new byte[byte_1.length + byte_2.length];
         System.arraycopy(byte_1, 0, byte_3, 0, byte_1.length);
         System.arraycopy(byte_2, 0, byte_3, byte_1.length, byte_2.length);
         return byte_3;
     }
 
     public static byte[] intToByteArray(int a) {
-        return new byte[] {
+        return new byte[]{
                 (byte) ((a >> 24) & 0xFF),
                 (byte) ((a >> 16) & 0xFF),
                 (byte) ((a >> 8) & 0xFF),
@@ -115,33 +115,33 @@ public class SlotLog {
     }
 
     public long putMessage(final MessageExt msg, long putOffset) throws Exception {
-        if(msg==null){
+        if (msg == null) {
             return putOffset;
         }
 
-        byte[] encodeMsg = MessageDecoder.encode(msg,false);
+        byte[] encodeMsg = MessageDecoder.encode(msg, false);
 
         long msgFileOffset = 0;
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
-        long totalPutOffset = (long)(this.mappedFileQueue.getMappedFiles().size()) * (long)storeConfig.getMappedFileSizeSlotLog();
-        if(mappedFile==null || putOffset+encodeMsg.length >= totalPutOffset){
-            if(mappedFile!=null){
+        long totalPutOffset = (long) (this.mappedFileQueue.getMappedFiles().size()) * (long) storeConfig.getMappedFileSizeSlotLog();
+        if (mappedFile == null || putOffset + encodeMsg.length >= totalPutOffset) {
+            if (mappedFile != null) {
                 mappedFile.setWrotePosition(mappedFile.getFileSize());
             }
             mappedFile = this.mappedFileQueue.getLastMappedFile(0);
             msgFileOffset = 0;
-            putOffset = (long)(this.mappedFileQueue.getMappedFiles().size()-1) * (long)mappedFile.getFileSize();
-        } else{
-            msgFileOffset = (putOffset - (long)(this.mappedFileQueue.getMappedFiles().size()-1) * (long)mappedFile.getFileSize());
+            putOffset = (long) (this.mappedFileQueue.getMappedFiles().size() - 1) * (long) mappedFile.getFileSize();
+        } else {
+            msgFileOffset = (putOffset - (long) (this.mappedFileQueue.getMappedFiles().size() - 1) * (long) mappedFile.getFileSize());
         }
-        mappedFile.setWrotePosition((int)msgFileOffset);
+        mappedFile.setWrotePosition((int) msgFileOffset);
         try {
-            mappedFile.appendMessage(encodeMsg,0,encodeMsg.length);
-            this.slotMaxOffset = putOffset+encodeMsg.length;
+            mappedFile.appendMessage(encodeMsg, 0, encodeMsg.length);
+            this.slotMaxOffset = putOffset + encodeMsg.length;
             // System.out.printf("After put offset:%d.%n",slotMaxOffset);
             return slotMaxOffset;
-        } catch (Exception e){
-            System.out.printf("Put to slot error:"+e+"\n");
+        } catch (Exception e) {
+            System.out.printf("Put to slot error:" + e + "\n");
             return putOffset;
         }
     }
@@ -183,7 +183,7 @@ public class SlotLog {
     }
 
     // TODO: consider more, such as if the broker shutdown, how to recover the readWhere pointer.
-    public long getNextMessageOffset(long offset){
+    public long getNextMessageOffset(long offset) {
         ByteBuffer msgSize = ByteBuffer.wrap(new byte[4]);
         msgSize.position(0);
         msgSize.limit(4);
@@ -195,7 +195,7 @@ public class SlotLog {
             } else {
                 return -1;
             }
-        } catch(Exception e){
+        } catch (Exception e) {
             return -1;
         }
     }

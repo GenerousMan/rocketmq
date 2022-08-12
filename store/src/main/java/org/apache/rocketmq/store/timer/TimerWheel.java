@@ -66,6 +66,7 @@ public class TimerWheel {
     private final int wheelLength;
     private final MessageStoreConfig storeConfig;
     Long temp = 0L;
+
     public TimerWheel(MessageStoreConfig storeConfig, String fileName, int slotsTotal, int precisionMs) throws IOException {
         this.slotsTotal = slotsTotal;
         this.precisionMs = precisionMs;
@@ -81,9 +82,9 @@ public class TimerWheel {
         try {
             randomAccessFile = new RandomAccessFile(this.fileName, "rw");
             if (file.exists() && randomAccessFile.length() != 0 &&
-                randomAccessFile.length() != wheelLength) {
+                    randomAccessFile.length() != wheelLength) {
                 throw new RuntimeException(String.format("Timer wheel length:%d != expected:%s",
-                    randomAccessFile.length(), wheelLength));
+                        randomAccessFile.length(), wheelLength));
             }
             randomAccessFile.setLength(this.slotsTotal * 2 * Slot.SIZE);
             fileChannel = randomAccessFile.getChannel();
@@ -120,33 +121,33 @@ public class TimerWheel {
     }
 
     public void flush() {
-        if(this.nextWheel!=null) {
+        if (this.nextWheel != null) {
             this.nextWheel.flush();
         }
-        for(Slot slot:slotTable.values()){
+        for (Slot slot : slotTable.values()) {
             slot.slotLog.flush();
         }
         this.mappedByteBuffer.force();
     }
 
-    public Slot getSlot(long timeMs){
-        if(timeMs-System.currentTimeMillis()> slotsTotal*precisionMs){
-            if(nextWheel!=null) {
+    public Slot getSlot(long timeMs) {
+        if (timeMs - System.currentTimeMillis() > slotsTotal * precisionMs) {
+            if (nextWheel != null) {
                 return nextWheel.getSlot(timeMs);
             }
             return null;
         }
         Slot slot = slotTable.get(timeMs / precisionMs * precisionMs);
-        if(slot==null){
+        if (slot == null) {
             slot = new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
             slotTable.put(slot.timeMs, slot);
         }
         return slot;
     }
 
-    public Slot forceGetSlotHere(long timeMs){
+    public Slot forceGetSlotHere(long timeMs) {
         Slot slot = slotTable.get(timeMs / precisionMs * precisionMs);
-        if(slot==null){
+        if (slot == null) {
             slot = new Slot(precisionMs, timeMs / precisionMs * precisionMs, 0, 0);
             slotTable.put(slot.timeMs, slot);
         }
@@ -163,15 +164,15 @@ public class TimerWheel {
         return (int) (timeMs / precisionMs % (slotsTotal * 2));
     }
 
-    public void Tick(long timeMs){
+    public void Tick(long timeMs) {
         // 逐层向上找当前时间的slot，如果有，则无条件转发到本层的所有slot中。
         long preTimeMs = preTickTimeMs(timeMs);
-        if(this.nextWheel!=null){
+        if (this.nextWheel != null) {
             // 先递归把最上层的转发
             nextWheel.Tick(preTimeMs);
             Slot slotCheck = nextWheel.forceGetSlotHere(preTimeMs);
             Long maxOffset = nextWheel.slotMaxOffsetTable.get(slotCheck.timeMs);
-            if(maxOffset!=null){
+            if (maxOffset != null) {
                 dispatchSlotMessage(slotCheck);
             }
         }
@@ -179,42 +180,41 @@ public class TimerWheel {
 
     public void PutMessage(MessageExt msg) throws Exception {
         long timeMs = Long.parseLong(msg.getProperty(MessageConst.PROPERTY_TIMER_OUT_MS));
-        long diffTime = timeMs-System.currentTimeMillis();
-        if(diffTime> slotsTotal*precisionMs){
-            if(nextWheel==null) {
+        long diffTime = timeMs - System.currentTimeMillis();
+        if (diffTime > slotsTotal * precisionMs) {
+            if (nextWheel == null) {
                 createNextWheel();
             }
             nextWheel.PutMessage(msg);
-        }
-        else {
+        } else {
             Slot slot = getSlot(timeMs);
             Long maxOffset = this.slotMaxOffsetTable.get(slot.timeMs);
-            if(maxOffset==null){
-                System.out.printf("no such offset:%d%n",slot.timeMs);
+            if (maxOffset == null) {
+                System.out.printf("no such offset:%d%n", slot.timeMs);
                 slotMaxOffsetTable.put(slot.timeMs, 0L);
                 maxOffset = 0L;
             }
             long newMaxOffset = slot.putMessage(msg, maxOffset);
             // System.out.printf("precision:%d,flushed before:%d, flushedwhere:%d%n",precisionMs,maxOffset,newMaxOffset);
-            this.slotMaxOffsetTable.replace(slot.timeMs,newMaxOffset);
-            this.slotTable.put(slot.timeMs,slot);
+            this.slotMaxOffsetTable.replace(slot.timeMs, newMaxOffset);
+            this.slotTable.put(slot.timeMs, slot);
             // putSlot(slot.timeMs,slot.num+1,slot.magic);
         }
     }
 
-    public void dispatchSlotMessage(Slot slotDispatched){
+    public void dispatchSlotMessage(Slot slotDispatched) {
         long slotTimeMs = slotDispatched.timeMs;
         // 从上一次转发完的readOffset起始。
         Long tempNextOffset = nextWheel.slotReadOffsetTable.get(slotTimeMs);
         Long maxNextOffset = nextWheel.slotMaxOffsetTable.get(slotTimeMs);
-        if(tempNextOffset==null){
-            nextWheel.slotReadOffsetTable.put(slotTimeMs,0L);
+        if (tempNextOffset == null) {
+            nextWheel.slotReadOffsetTable.put(slotTimeMs, 0L);
             tempNextOffset = 0L;
         }
         int count = 0;
-        while(tempNextOffset<maxNextOffset){
+        while (tempNextOffset < maxNextOffset) {
             MessageExt msgDispatched = slotDispatched.getNextMessage(tempNextOffset);
-            if(msgDispatched==null){
+            if (msgDispatched == null) {
                 long slotLogSize = storeConfig.getMappedFileSizeSlotLog();
                 // 下个文件的起点位置。
                 tempNextOffset = tempNextOffset / slotLogSize * slotLogSize + slotLogSize;
@@ -226,64 +226,64 @@ public class TimerWheel {
             try {
                 // 转发一条就更新一次maxOffsetTable
                 Long beforeSlotOffset = slotMaxOffsetTable.get(nowSlot.timeMs);
-                if(beforeSlotOffset==null){
-                    slotMaxOffsetTable.put(nowSlot.timeMs,0L);
+                if (beforeSlotOffset == null) {
+                    slotMaxOffsetTable.put(nowSlot.timeMs, 0L);
                     beforeSlotOffset = 0L;
                 }
                 long nowSlotOffset = nowSlot.putMessage(msgDispatched, beforeSlotOffset);
-                slotMaxOffsetTable.replace(nowSlot.timeMs,nowSlotOffset);
-                tempNextOffset+=(nowSlotOffset-beforeSlotOffset);
-                nextWheel.slotReadOffsetTable.replace(slotTimeMs,tempNextOffset);
-                log.info("["+System.currentTimeMillis()+ "]Slot "+slotTimeMs+" dispatch to Slot" +nowSlot.timeMs+" finished once.now offset:"+tempNextOffset+", total: "+maxNextOffset+"\n");
-                putSlot(nowSlot.timeMs,nowSlot.num+1,nowSlot.magic);
-            } catch (Exception e){
-                System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs,nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
+                slotMaxOffsetTable.replace(nowSlot.timeMs, nowSlotOffset);
+                tempNextOffset += (nowSlotOffset - beforeSlotOffset);
+                nextWheel.slotReadOffsetTable.replace(slotTimeMs, tempNextOffset);
+                log.info("[" + System.currentTimeMillis() + "]Slot " + slotTimeMs + " dispatch to Slot" + nowSlot.timeMs + " finished once.now offset:" + tempNextOffset + ", total: " + maxNextOffset + "\n");
+                putSlot(nowSlot.timeMs, nowSlot.num + 1, nowSlot.magic);
+            } catch (Exception e) {
+                System.out.printf("dispatch fail! now precision:%d, next precision: %d, now slotTime:%d, msgTime:%d. \n", this.precisionMs, nextWheel.precisionMs, nowSlot.timeMs, delayedTime);
             }
         }
         // 转发完了，由于转发存在提前量，可能仍然会有一定消息写入，则此处不可以删除slotMaxOffsetTable中的指定项。
         // nextWheel.slotMaxOffsetTable.remove(slotTimeMs);
-        putSlot(slotDispatched.timeMs,0,slotDispatched.magic);
+        putSlot(slotDispatched.timeMs, 0, slotDispatched.magic);
     }
 
     public static String getTimerWheelPath(final String rootDir, final long precision) {
         return rootDir + File.separator + "timerwheel" + File.separator + precision;
     }
-    private boolean createNextWheel(){
+
+    private boolean createNextWheel() {
         try {
-            this.nextWheel = new TimerWheel(storeConfig, getTimerWheelPath(storeConfig.getStorePathRootDir(),slotsTotal * precisionMs), slotsTotal, slotsTotal * precisionMs);
+            this.nextWheel = new TimerWheel(storeConfig, getTimerWheelPath(storeConfig.getStorePathRootDir(), slotsTotal * precisionMs), slotsTotal, slotsTotal * precisionMs);
             nextWheel.beforeWheel = this;
             return true;
-        } catch (IOException e){
+        } catch (IOException e) {
             System.out.printf("Create next wheel fail.");
             return false;
         }
     }
 
-    public MessageExt getSlotNextMessage(Slot slot){
+    public MessageExt getSlotNextMessage(Slot slot) {
         Long nowReadOffset = this.slotReadOffsetTable.get(slot.timeMs);
         Long nowMaxOffset = this.slotMaxOffsetTable.get(slot.timeMs);
-        if(nowReadOffset==null){
-            this.slotReadOffsetTable.put(slot.timeMs,0L);
+        if (nowReadOffset == null) {
+            this.slotReadOffsetTable.put(slot.timeMs, 0L);
             nowReadOffset = 0L;
         }
 
-        if(nowMaxOffset==null || nowReadOffset>=nowMaxOffset){
+        if (nowMaxOffset == null || nowReadOffset >= nowMaxOffset) {
             return null;
         }
         MessageExt nextMessage = slot.getNextMessage(nowReadOffset);
-        this.slotReadOffsetTable.replace(slot.timeMs,nextMessage.getStoreSize()+nowReadOffset);
+        this.slotReadOffsetTable.replace(slot.timeMs, nextMessage.getStoreSize() + nowReadOffset);
         // System.out.printf("now message size:%d%n",nextMessage.getStoreSize());
         return nextMessage;
     }
 
 
     public boolean putSlot(long timeMs, int num, int magic) {
-        if(timeMs-System.currentTimeMillis()> slotsTotal*precisionMs){
-            if(this.nextWheel==null) {
-                if(createNextWheel()) {
+        if (timeMs - System.currentTimeMillis() > slotsTotal * precisionMs) {
+            if (this.nextWheel == null) {
+                if (createNextWheel()) {
                     this.nextWheel.putSlot(timeMs, num, magic);
-                }
-                else{
+                } else {
                     System.out.printf("put slot failed.\n");
                     return false;
                 }
@@ -314,7 +314,7 @@ public class TimerWheel {
                     }
                     Long readOffset = slotReadOffsetTable.get(item);
                     Long maxOffset = slotMaxOffsetTable.get(item);
-                    if(readOffset == null || maxOffset == null){
+                    if (readOffset == null || maxOffset == null) {
                         continue;
                     }
                     if (readOffset >= maxOffset && item < deleteTimeMs(System.currentTimeMillis())) {
@@ -325,34 +325,34 @@ public class TimerWheel {
                         slotTable.remove(item);
                     }
                 }
-                if(this.nextWheel!=null) {
+                if (this.nextWheel != null) {
                     this.nextWheel.deleteExpiredItems();
                 }
             }
-        } catch (Exception e){
+        } catch (Exception e) {
             // System.out.printf("error:"+e);
         }
     }
 
     public void printAllSlot() {
-        if(this.nextWheel!=null){
+        if (this.nextWheel != null) {
             this.nextWheel.printAllSlot();
         }
         Date nowDate = new Date();
-        System.out.printf("-----------------[Now time"+nowDate+"]----------------\n");
-        System.out.printf("---------[Wheel Precision %d]--------\n",precisionMs);
-        System.out.printf("Now slot num:%d\n",slotTable.size());
-        System.out.printf("Now max slot offset num:%d\n",slotMaxOffsetTable.size());
-        System.out.printf("Now read slot offset num:%d\n",slotReadOffsetTable.size());
+        System.out.printf("-----------------[Now time" + nowDate + "]----------------\n");
+        System.out.printf("---------[Wheel Precision %d]--------\n", precisionMs);
+        System.out.printf("Now slot num:%d\n", slotTable.size());
+        System.out.printf("Now max slot offset num:%d\n", slotMaxOffsetTable.size());
+        System.out.printf("Now read slot offset num:%d\n", slotReadOffsetTable.size());
         List<Long> keyList = Collections.list(slotMaxOffsetTable.keys());
         Collections.sort(keyList);
-        for(int i=0; i<slotMaxOffsetTable.size();i++){
+        for (int i = 0; i < slotMaxOffsetTable.size(); i++) {
             long timeStamp = keyList.get(i);
             Date date = new Date();
             date.setTime(timeStamp);
             Long maxOffset = slotMaxOffsetTable.get(timeStamp);
             Long readOffset = slotReadOffsetTable.get(timeStamp);
-            System.out.printf("[Slot "+date+"] Max offset:"+maxOffset/1024+" KB, read: "+(readOffset==null? 0 :readOffset/1024)+"\n");
+            System.out.printf("[Slot " + date + "] Max offset:" + maxOffset / 1024 + " KB, read: " + (readOffset == null ? 0 : readOffset / 1024) + "\n");
         }
     }
 
@@ -364,6 +364,7 @@ public class TimerWheel {
         localBuffer.get().putLong(firstPos);
         localBuffer.get().putLong(lastPos);
     }
+
     public void putSlot(long timeMs, long firstPos, long lastPos, int num, int magic) {
         localBuffer.get().position(getSlotIndex(timeMs) * Slot.SIZE);
         localBuffer.get().putLong(timeMs / precisionMs);

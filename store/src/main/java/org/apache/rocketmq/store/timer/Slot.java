@@ -44,18 +44,19 @@ public class Slot {
 
     public long putMessage(final MessageExt msg, long putOffset) throws Exception {
         long updateOffset = this.slotLog.putMessage(msg, putOffset);
-        num+=1;
+        num += 1;
         return updateOffset;
     }
-    public MessageExt getNextMessage(long offset){
+
+    public MessageExt getNextMessage(long offset) {
         return this.slotLog.lookMessageByOffset(offset);
     }
 
-    public void setMaxFlushedWhere(long maxFlushedWhere){
+    public void setMaxFlushedWhere(long maxFlushedWhere) {
         this.slotLog.mappedFileQueue.setFlushedWhere(maxFlushedWhere);
     }
 
-    public void clear(){
+    public void clear() {
         this.slotLog.mappedFileQueue.destroy();
     }
 }

@@ -52,15 +52,15 @@ public class SlotLogTest {
         // here msg size will be 1204
         MessageExt msgTest = buildMessage(100,"Test", true);
         long putOffset = slotLog.putMessage(msgTest,0);
-        Assert.assertEquals(putOffset,1204L);
-        Assert.assertEquals(slotLog.mappedFileQueue.getMaxOffset(),1204);
+        Assert.assertEquals(putOffset,1228L);
+        Assert.assertEquals(slotLog.mappedFileQueue.getMaxOffset(),1228);
 
         ByteBuffer msgSize = ByteBuffer.wrap(new byte[8]);
         msgSize.position(0);
         msgSize.limit(4);
         boolean getSizeResult = slotLog.mappedFileQueue.findMappedFileByOffset(0).getData(0,4, msgSize);
         int size = msgSize.getInt(0);
-        Assert.assertEquals(size,1204);
+        Assert.assertEquals(size,1228);
 
         ByteBuffer msgBody = ByteBuffer.wrap(new byte[4096]);
         msgBody.position(0);

@@ -149,6 +149,7 @@ public class TimerMessageStore {
     //the dequeue is an asynchronous process, use this flag to track if the status has changed
     private boolean dequeueStatusChangeFlag = false;
     private long shouldStartTime;
+    private final long initTimeStamp;
 
     // True if current store is master or current brokerId is equal to the minimum brokerId of the replica group in slaveActingMaster mode.
     protected volatile boolean shouldRunningDequeue;
@@ -173,6 +174,7 @@ public class TimerMessageStore {
         this.timerMetrics = timerMetrics;
         this.timerCheckpoint = timerCheckpoint;
         this.lastBrokerRole = storeConfig.getBrokerRole();
+        this.initTimeStamp = System.currentTimeMillis();
 
         if (messageStore instanceof DefaultMessageStore) {
             scheduler = ThreadUtils.newSingleThreadScheduledExecutor(
@@ -601,10 +603,14 @@ public class TimerMessageStore {
                 return;
             }
             if (msg.getProperty(TIMER_ENQUEUE_MS) != null
-                    && NumberUtils.toLong(msg.getProperty(TIMER_ENQUEUE_MS)) == Long.MAX_VALUE) {
+                    // the message wasn't put into the timing wheel at all.
+                    && (NumberUtils.toLong(msg.getProperty(TIMER_ENQUEUE_MS)) == Long.MAX_VALUE
+                    // the message was put into timing wheel before the broker's restarting.
+                    || NumberUtils.toLong(msg.getProperty(TIMER_ENQUEUE_MS)) < initTimeStamp)) {
                 return;
             }
-            // pass msg into addAndGet, for further more judgement extension.
+
+            // pass the msg into addAndGet, for further more judgement extension.
             timerMetrics.addAndGet(msg, value);
         } catch (Throwable t) {
             if (frequency.incrementAndGet() % 1000 == 0) {

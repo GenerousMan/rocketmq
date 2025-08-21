@@ -111,6 +111,7 @@ public class TimerMessageStore {
 
     private final ByteBuffer timerLogBuffer = ByteBuffer.allocate(4 * 1024);
     private final ThreadLocal<ByteBuffer> bufferLocal;
+    private final Set<Thread> bufferLocalThreads = Collections.synchronizedSet(new HashSet<>());
     private final ScheduledExecutorService scheduler;
 
     private final MessageStore messageStore;
@@ -198,6 +199,7 @@ public class TimerMessageStore {
         bufferLocal = new ThreadLocal<ByteBuffer>() {
             @Override
             protected ByteBuffer initialValue() {
+                bufferLocalThreads.add(Thread.currentThread());
                 return ByteBuffer.allocateDirect(storeConfig.getMaxMessageSize() + 100);
             }
         };
@@ -552,7 +554,15 @@ public class TimerMessageStore {
         timerWheel.shutdown(false);
 
         this.scheduler.shutdown();
-        UtilAll.cleanBuffer(this.bufferLocal.get());
+        // Clean up all tracked bufferLocal instances
+        synchronized (bufferLocalThreads) {
+            for (Thread thread : bufferLocalThreads) {
+                ByteBuffer buffer = bufferLocal.get();
+                if (buffer != null) {
+                    UtilAll.cleanBuffer(buffer);
+                }
+            }
+        }
         this.bufferLocal.remove();
     }
 
